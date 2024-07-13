@@ -1,10 +1,12 @@
 use bevy::prelude::*;
+use bevy::math::vec3;
 
 #[derive(Component)]
 struct MyCamera {
     x: f32,
     y: f32,
-    z: f32,
+
+    vec: Vec3,
 }
 
 fn main() {
@@ -13,32 +15,33 @@ fn main() {
         .add_systems(Startup, spawn_camera)
         .add_systems(Startup, spawn_cube)
         .add_systems(Update, move_camera)
-        .run()
+        .run();
 }
 
 fn move_camera(
-    keys: Res<Input<KeyCode>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut camera: Query<(&mut MyCamera, &mut Transform)>,
 ) {
     let (mut values, mut transform) = camera.get_single_mut().unwrap();
 
-    if keys.pressed(KeyCode::W) {
-        values.x += 0.001;
-        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_x(values.x));
+    if keys.pressed(KeyCode::KeyW) {
+        values.vec.x = 0.01;
+        values.x += values.vec.x;
     }
-    if keys.pressed(KeyCode::S) {
-        values.x -= 0.001;
-        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_x(values.x));
+    if keys.pressed(KeyCode::KeyS) {
+        values.vec.x = -0.001;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        values.vec.y = 0.001;
+        values.y += values.vec.y;
+    } 
+    if keys.pressed(KeyCode::KeyD) {
+        values.vec.y = -0.01;
+        values.y += values.vec.y;
     }
 
-    if keys.pressed(KeyCode::A) {
-        values.y += 0.001;
-        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_y(values.y));
-    } 
-    if keys.pressed(KeyCode::D) {
-        values.y -= 0.001;
-        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_y(values.y));
-    }
+    transform.rotate_around(Vec3::ZERO, Quat::from_rotation_x(values.x));
+    transform.rotate_around(Vec3::ZERO, Quat::from_rotation_y(values.y));
 }
 
 fn spawn_camera(
@@ -50,15 +53,15 @@ fn spawn_camera(
                 .looking_at(Vec3::ZERO, Vec3::Y),
                 ..default()
         },
-        MyCamera { x: 0., y: 0., z: 0. },
+        MyCamera { x: 0., y: 0., vec: vec3(0.0, 0.0, 0.0) },
     ));
 }
 
 fn spawn_cube(
     mut commands: Commands,
-    mut mesh: ResMut<Assets<Mesh>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let shape = mesh.add(shape::Cube::default().into());
+    let shape = meshes.add(Cuboid::default());
 
     let data = std::fs::read_to_string("data").unwrap();
 
