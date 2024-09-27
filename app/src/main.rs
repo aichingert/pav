@@ -67,6 +67,49 @@ impl<'a> State<'a> {
             size
         }
     }
+
+    pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
+            self.size = size;
+            self.config.width = size.width;
+            self.config.height = size.height;
+            self.surface.configure(&self.device, &self.config);
+    }
+
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render encode"),
+        });
+
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
 }
 
 async fn run(ev: EventLoop<()>, window: Window) {
@@ -79,15 +122,21 @@ async fn run(ev: EventLoop<()>, window: Window) {
                     target.exit();
                 },
                 WindowEvent::RedrawRequested => {
-                    state.window.request_redraw();
+                    match state.render() {
+                        Ok(_) => (),
+                        Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                        Err(wgpu::SurfaceError::OutOfMemory) => target.exit(),
+                        Err(e) => eprintln!("{:?}", e),
+                    }
+
                 },
                 WindowEvent::Resized(physical_size) => {
-                    state.size = physical_size;
-                    state.config.width = physical_size.width;
-                    state.config.height = physical_size.height;
-                    state.surface.configure(&state.device, &state.config);
+                    state.resize(physical_size);
                 },
                 _ => (),
+            }
+            Event::AboutToWait => {
+                state.window.request_redraw();
             }
             _ => (),
         }
