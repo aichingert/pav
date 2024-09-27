@@ -12,23 +12,19 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    pub async fn run(ev: EventLoop<()>, window: &'a Window) {
-        let mut app = Self::new(&window).await;
-
-        ev.run_app(&mut app).unwrap();
-    }
-
     pub async fn new(window: &'a Window) -> Self {
         Self {
             state: State::new(window).await,
         }
     }
+
+    pub async fn run(ev: EventLoop<()>, window: &'a Window) {
+        ev.run_app(&mut Self::new(&window).await).unwrap();
+    }
 }
 
 impl<'a> ApplicationHandler for App<'a> {
-    fn resumed(&mut self, ev: &ActiveEventLoop) {
-
-    }
+    fn resumed(&mut self, ev: &ActiveEventLoop) {}
 
     fn window_event(&mut self, ev: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
         match event {
