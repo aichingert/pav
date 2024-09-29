@@ -1,7 +1,13 @@
+// https://docs.fileformat.com/font/ttf/
+
 #[derive(Debug)]
 struct FontDirectory {
     off_sub: OffsetSubtable,
     tbl_dirs: Vec<TableDirectory>,
+
+    glyf: usize,
+    loca: usize,
+    head: usize,
 }
 
 #[derive(Debug)]
@@ -55,9 +61,19 @@ struct Format4 {
 impl FontDirectory {
     fn read(buf: &[u8]) -> (Self, usize) {
         let (off_sub, ptr) = OffsetSubtable::read(buf, 0);
-        let (tbl_dirs, ptr) = TableDirectory::read(buf, ptr, off_sub.num_tables);
+        let cap = off_sub.num_tables as usize;
 
-        (Self { off_sub, tbl_dirs }, ptr)
+        let mut ft = Self {
+            off_sub,
+            tbl_dirs: Vec::with_capacity(cap),
+            glyf: 0,
+            loca: 0,
+            head: 0,
+        };
+
+        let ptr = TableDirectory::read(&mut ft, buf, ptr);
+
+        (ft, ptr)
     }
 }
 
@@ -77,22 +93,36 @@ impl OffsetSubtable {
 }
 
 impl TableDirectory {
-    fn read(buf: &[u8], ptr: usize, tables: u16) -> (Vec<Self>, usize) {
-        let tables = tables as usize;
-        let mut tbl_dirs = Vec::with_capacity(tables);
+    fn read(ft: &mut FontDirectory, buf: &[u8], ptr: usize) -> usize {
+        let tables = ft.off_sub.num_tables as usize;
 
         for off in 0..tables {
             let pos = ptr + off * 16;
 
-            tbl_dirs.push(Self {
+            ft.tbl_dirs.push(Self {
                 tag:        u32_from_be_bytes(&buf[pos + 0..pos + 4]),
                 check_sum:  u32_from_be_bytes(&buf[pos + 4..pos + 8]),
                 offset:     u32_from_be_bytes(&buf[pos + 8..pos + 12]),
                 length:     u32_from_be_bytes(&buf[pos + 12..pos + 16]),
             });
+
+            let tbl_dir = ft.tbl_dirs.last().unwrap();
+
+            match tbl_dir.tag {
+                1735162214 => ft.glyf = ptr + tbl_dir.offset as usize,
+                1819239265 => ft.loca = ptr + tbl_dir.offset as usize,
+                1751474532 => ft.head = ptr + tbl_dir.offset as usize,
+                1668112752 => {
+                    let (cmap, _) = CMap::read(buf, tbl_dir.offset as usize);
+                    let ptr = tbl_dir.offset as usize + cmap.subtables[0].offset as usize;
+                    let fmt4 = Format4::read(buf, ptr);
+                    println!("{fmt4:?}");
+                }
+                _ => (),
+            }
         }
 
-        (tbl_dirs, ptr + tables * 16)
+        ptr + tables * 16
     }
 }
 
@@ -126,7 +156,7 @@ impl CMap {
 
 impl Format4 {
     fn read(buf: &[u8], ptr: usize) -> (Self, usize) {
-        let cap = u16_from_be_bytes(&buf[ptr + 6..ptr + 8]) as usize;
+        let cap = u16_from_be_bytes(&buf[ptr + 6..ptr + 8]) as usize / 2;
 
         let mut fmt4 = Self {
             format:         u16_from_be_bytes(&buf[ptr + 0..ptr + 2]),
@@ -145,23 +175,19 @@ impl Format4 {
             glyph_id_array: Vec::with_capacity(cap),
         };
 
-        let end_code_ptr = ptr + 14;
-        let start_code_ptr = ptr + 14 + fmt4.seg_count_x2 as usize + 2;
-        let id_delta_ptr = ptr + 14 + fmt4.seg_count_x2 as usize * 2 + 2;
-        let id_range_ptr = ptr + 14 + fmt4.seg_count_x2 as usize * 3 + 2;
+        let e_ptr = ptr + 14;
+        let s_ptr = e_ptr + fmt4.seg_count_x2 as usize * 1 + 2;
+        let d_ptr = e_ptr + fmt4.seg_count_x2 as usize * 2 + 2;
+        let r_ptr = e_ptr + fmt4.seg_count_x2 as usize * 3 + 2;
 
-        let size = fmt4.seg_count_x2 as usize / 2;
-
-        assert_eq!(size, cap);
-
-        for i in 0..size {
-            fmt4.end_code.push(u16_from_be_bytes(&buf[end_code_ptr + i * 2..end_code_ptr + i * 2 + 2]));
-            fmt4.start_code.push(u16_from_be_bytes(&buf[start_code_ptr + i * 2..start_code_ptr + i * 2 + 2]));
-            fmt4.id_delta.push(u16_from_be_bytes(&buf[id_delta_ptr + i * 2..id_delta_ptr + i * 2]));
-            fmt4.id_range_offset.push(u16_from_be_bytes(&buf[id_range_ptr + i * 2..id_range_ptr + i * 2]));
+        for i in 0..cap {
+            fmt4.end_code.push(u16_from_be_bytes(&buf[e_ptr + i*2..e_ptr + i*2 + 2]));
+            fmt4.start_code.push(u16_from_be_bytes(&buf[s_ptr + i*2..s_ptr + i*2 + 2]));
+            fmt4.id_delta.push(u16_from_be_bytes(&buf[d_ptr + i*2..d_ptr + i*2 + 2]));
+            fmt4.id_range_offset.push(u16_from_be_bytes(&buf[r_ptr + i*2..r_ptr + i*2 + 2]));
         }
 
-        let glyph_ptr = size * 8 + 2;
+        let glyph_ptr = ptr + cap * 8 + 2;
         let remaining = fmt4.length as usize - (glyph_ptr - ptr);
 
         for i in 0..remaining / 2 {
@@ -188,10 +214,12 @@ impl Format4 {
 
         if self.start_code[ptr] < code_point {
             if self.id_range_offset[ptr] != 0 {
-                //let mut ptr = index as i32 + self.id_range_offset[index] as i32 / 2;
-                //ptr += code_point as i32 - self.start_code[index];
-                //println!("{ptr}");
+                let mut pos = ptr as i32 + self.id_range_offset[ptr] as i32 / 2;
+                pos += code_point as i32 - self.start_code[ptr] as i32;
 
+                println!("{pos:?}");
+
+                return 0;
             } else {
                 return self.id_delta[ptr] + code_point;
             }
@@ -207,19 +235,8 @@ pub fn parse(filename: &str) {
     let (fd, mut ptr) = FontDirectory::read(&file);
     println!("{}", fd.tbl_dirs.len());
 
-    for tbl_dir in &fd.tbl_dirs {
-        if tbl_dir.tag == u32_from_be_bytes(b"cmap") {
-            let offset = tbl_dir.offset as usize + ptr;
+    println!("{}", u16_from_be_bytes(&file[fd.head + 50..fd.head + 52]));
 
-            let (cmap, nxt) = CMap::read(&file, offset);
-
-            for enc in &cmap.subtables {
-                println!("{enc:?}");
-            }
-
-            ptr = nxt;
-        }
-    }
 }
 
 fn u32_from_be_bytes(buf: &[u8]) -> u32 {
