@@ -14,7 +14,7 @@ fn main() {
     let ev_loop = EventLoop::new().unwrap();
     let window = ev_loop.create_window(WindowAttributes::default()).unwrap();
 
-    ttf::parser::parse("../tmp/envy/envy_code.ttf");
+    ttf::Parser::new("PxPlus_ToshibaTxL1_8x16.ttf");
 
     pollster::block_on(App::run(ev_loop, &window));
 }
