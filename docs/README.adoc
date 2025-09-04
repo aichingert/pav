@@ -1,7 +1,0 @@
-= kdb
-aichingert
-:toc:
-:toclevels: 3
-:icon: font
-
-knowledge database, easy way for me to document and store things across machines.

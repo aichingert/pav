@@ -1,6 +1,2 @@
-
-
-# Added by cargo
-
-target
-Cargo.lock
+zig-out
+.zig-cache
