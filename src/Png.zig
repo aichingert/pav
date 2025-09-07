@@ -1,4 +1,8 @@
 const std = @import("std");
+const z   = @cImport(
+    @cInclude("zlib.h")
+);
+
 const mem = std.mem;
 const assert = std.debug.assert;
 
@@ -97,40 +101,29 @@ const PLTE = struct {
 
 // TODO: understand preset dictionaries -> https://datatracker.ietf.org/doc/html/rfc1950
 const IDAT = struct {
+    data: [4096 * 2560]u8,
+    size: u64,
+
     fn read_chunk(raw_png: []const u8, pos: *u32, length: u32) IDAT {
-        const start = pos.*;
+        var idat = IDAT{
+            .data = undefined,
+            .size = 0,
+        };
 
-        const cmf = @as(u32, read(u8, raw_png, pos));
-        const compression_method = cmf & 0x0F;
-        const cinfo = cmf >> 4;
+        var infstream = z.z_stream{
+            .avail_in = length,
+            .next_in = @constCast(raw_png[pos.*..pos.* + length]).ptr,
+            .avail_out = idat.data.len,
+            .next_out = @ptrCast(&idat.data),
+        };
 
-        // NOTE 8 -> deflate 
-        assert(compression_method == 8);
-        assert(cinfo == 7);
+        const init_res = z.inflateInit(&infstream);
+        const infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
+        const iend_res = z.inflateEnd(&infstream);
 
-        const window_size: u32 = 32768;
-
-        const flg = @as(u32, read(u8, raw_png, pos));
-        const fcheck = flg & 0x0F;
-        const fdict  = flg & 0x10;
-        const flevel = flg >> 6;
-        _ = flevel; // NOTE: only used to check if it should be recompressed
-        assert((cmf * 256 + flg) % 31 == 0);
-
-        _ = fcheck;
-        _ = window_size;
-
-        if (fdict > 0) {
-            // TODO:
-            std.debug.print("fdict set\n", .{});
-        }
-
-        std.debug.print("cmf - {any} flg - {any}\n", .{cmf >> 4, flg});
-        std.debug.print("{any} {any}\n", .{length, flg});
-
-
-        pos.* = start;
-        return IDAT{};
+        assert(init_res == z.Z_OK and infl_res == z.Z_STREAM_END and iend_res == z.Z_OK);
+        idat.size = infstream.total_out;
+        return idat;
     }
 };
 
@@ -158,8 +151,8 @@ pub fn extract_pixels(raw_png: []const u8) void {
         const crc = read(u32, raw_png, &pos);
         _ = crc;
     }
-    
-    std.debug.print("{any}\n", .{ihdr});
+ 
+    std.debug.print("{any} \n", .{ihdr});
 
     //std.debug.print("{x}\n", .{raw_png[pos..pos + 4]});
     //
