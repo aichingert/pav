@@ -28,18 +28,22 @@ pub fn write_png(allocator: Allocator, ihdr: Png.IHDR, plte: Png.PLTE, idat: Png
     try write_number_with_end(u32, buffer, &pos, ihdr.height, '\n');
     try write_number_with_end(u32, buffer, &pos, 255, '\n');
 
+    var fil: u64 = 0;
     var adv: u64 = 0;
     var bpp: u64 = 0;
 
     if (ihdr.color_type == 3) {
         adv = 1;
         bpp = 1;
+        fil = 0;
     } else if (ihdr.color_type == 2) {
         adv = 3;
         bpp = 3;
+        fil = 1;
     } else if (ihdr.color_type == 6) {
         adv = 4;
         bpp = 4;
+        fil = 1;
     } else {
         assert(false);
     }
@@ -51,38 +55,81 @@ pub fn write_png(allocator: Allocator, ihdr: Png.IHDR, plte: Png.PLTE, idat: Png
     var cnt: u64 = 0;
     var i: u64 = 0;
     while (i < ihdr.height) {
-        var j: u64 = 0;
+        var j: u64 = fil;
 
         if (idat.data[i * ihdr.width * adv + i] == 1) {
             var f: u64 = 1;
             const o: u64 = i * ihdr.width * adv + i;
 
-            while (f < ihdr.width * adv) {
+            while (f <= ihdr.width * adv) {
                 var t: u64 = 0;
 
                 while (t < bpp) {
-                    const previous: u16 = if (f < 1 + bpp) 0 else @intCast(idat.data[f + o - bpp]);
-                    const current: u16 = @intCast(idat.data[f + o]);
-                    const corrected: u16 = (current + previous) % 256;
-                    const value: u8 = @intCast(corrected);
+                    const prev: u16 = if (f < 1 + bpp) 0 else @intCast(idat.data[f + o - bpp]);
+                    const curr: u16 = @intCast(idat.data[f + o]);
+                    const corr: u16 = (curr + prev) % 256;
+                    const value: u8 = @intCast(corr);
 
                     idat.data[f + o] = value;
                     t += 1;
                     f += 1;
                 }
             }
-        } else if (idat.data[i * ihdr.width * adv + i] == 4) {
-            std.debug.print("here\n", .{});
-            var f: u64 = 1;
+        } else if (idat.data[i * ihdr.width * adv + i] == 2) {
+            var x: u64 = 1;
             const o: u64 = i * ihdr.width * adv + i;
+            const line = ihdr.width * adv + 1;
 
-            while (f < ihdr.width * adv) {
+            while (x <= ihdr.width * adv) {
                 var t: u64 = 0;
 
                 while (t < bpp) {
-                    const a: i16 = if (f == 1) 0 else @intCast(idat.data[f + o - bpp]);
-                    const b: i16 = if (o == 0) 0 else @intCast(idat.data[f + o - ihdr.width * adv + 1]);
-                    const c: i16 = if (f == 1 or o == 0) 0 else @intCast(idat.data[f + o - bpp - ihdr.width * adv + 1]);
+                    const up: u16 = if (o == 0) 0 else @intCast(idat.data[x + o - line]);
+                    const corrected: u16 = (@as(u16, idat.data[x + o]) + up) % 256;
+
+                    idat.data[x + o] = @intCast(corrected);
+                    x += 1;
+                    t += 1;
+                }
+            }
+        } else if (idat.data[i * ihdr.width * adv + i] == 3) {
+            var x: u64 = 1;
+            const o: u64 = i * ihdr.width * adv + i;
+            const line = ihdr.width * adv + 1;
+
+            while (x <= ihdr.width * adv) {
+                var t: u64 = 0;
+
+                while (t < bpp) {
+                    const curr = x + o;
+
+                    const left: u16 = if (x < 1 + bpp) 0 else @intCast(idat.data[curr - bpp]);
+                    const prev: u16 = if (o == 0     ) 0 else @intCast(idat.data[curr - line]);
+
+                    const sum: f64 = @as(f64, @floatFromInt(left)) + @as(f64, @floatFromInt(prev));
+
+                    const average: f64 = @floor(sum / 2.0);
+                    const correct: u16 = @as(u16, idat.data[curr]) + @as(u16, @intFromFloat(average));
+
+                    idat.data[curr] = @intCast(correct % 256);
+                    x += 1;
+                    t += 1;
+                }
+            }
+        } else if (idat.data[i * ihdr.width * adv + i] == 4) {
+            var f: u64 = 1;
+            const o: u64 = i * ihdr.width * adv + i;
+
+            while (f <= ihdr.width * adv) {
+                var t: u64 = 0;
+
+                while (t < bpp) {
+                    const curr = f + o;
+                    const line = ihdr.width * adv + 1;
+
+                    const a: i16 = if (f < 1 + bpp) 0 else @intCast(idat.data[curr - bpp]);
+                    const b: i16 = if (o == 0) 0 else @intCast(idat.data[curr - line]);
+                    const c: i16 = if (f < 1 + bpp or o == 0) 0 else @intCast(idat.data[curr - bpp - line]);
 
                     const p: i16 = a + b - c;
                     const pa: u16 = @abs(p - a);
@@ -98,15 +145,14 @@ pub fn write_png(allocator: Allocator, ihdr: Png.IHDR, plte: Png.PLTE, idat: Png
                         value = @intCast(c);
                     }
 
-                    value = ((value + idat.data[f + o]) % 256);
-                    idat.data[f + o] = @intCast(value);
+                    value = ((value + idat.data[curr]) % 256);
+                    idat.data[curr] = @intCast(value);
                     t += 1;
                     f += 1;
                 }
             }
-
         } else if (idat.data[i * ihdr.width * adv + i] != 0) {
-            std.debug.print("{any}\n", .{idat.data[i * ihdr.width * adv + i]});
+            std.debug.print("HUH {any}\n", .{idat.data[i * ihdr.width * adv + i]});
         }
 
         
