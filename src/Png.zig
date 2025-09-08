@@ -181,60 +181,74 @@ pub const IDAT = struct {
     }
 
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
-        const size = 64 * 1024 * 1024;
-        const buff = allocator.alloc(u8, size) catch |err| { 
-            std.debug.print("ERROR: allocationg `{any}`\n", .{err}); 
+        var alloc_size: u32 = 4096;
+        var alloc_buff = allocator.alloc(u8, alloc_size) catch |err| { 
+            std.debug.print("ERROR: allocating `{any}`\n", .{err}); 
             std.process.exit(1);
         };
 
-        var idat = IDAT{
-            .data = buff,
-            .size = 0,
-        };
         var infstream = z.z_stream{
             .avail_in = length,
             .next_in = @constCast(raw_png[pos.*..pos.* + length]).ptr,
-            .avail_out = size,
-            .next_out = buff.ptr,
+            .avail_out = alloc_size,
+            .next_out = alloc_buff.ptr,
         };
 
         const init_res = z.inflateInit(&infstream);
         assert(init_res == z.Z_OK);
-        var infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
         pos.* += length;
+        var crc = read(u32, raw_png, pos);
 
-        if (infl_res != z.Z_STREAM_END) {
-            var crc = read(u32, raw_png, pos);
-
-            while (true) {
-                const len = read(u32, raw_png, pos);
-                assert(len < raw_png.len - pos.*);
-                pos.* += 4;
-
-                infstream.avail_in = len;
-                infstream.next_in = @constCast(raw_png[pos.*..pos.* + len]).ptr;
-                infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
-
-                pos.* += len;
-
-                if (infl_res == z.Z_STREAM_END) {
-                    idat.size = infstream.total_out;
-                    idat.data = buff;
-                    return idat;
-                }
-
-                crc = read(u32, raw_png, pos);
+        while (true) {
+            const infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
+            std.debug.print("{any}\n", .{infl_res});
+            if (infl_res == -3) {
+                std.debug.print("{s}\n", .{infstream.msg});
             }
 
-            return idat;
+            assert(infl_res == z.Z_OK 
+                or infl_res == z.Z_STREAM_END 
+                or infl_res == z.Z_BUF_ERROR);
+
+            if          (infl_res == z.Z_STREAM_END) {
+                const iend_res = z.inflateEnd(&infstream);
+                assert(iend_res == z.Z_OK);
+                pos.* -= 4;
+
+                return IDAT{
+                    .size = infstream.total_out,
+                    .data = alloc_buff,
+                };
+            } else if   (infl_res == z.Z_BUF_ERROR) {
+                const prev_size = alloc_size;
+                alloc_size = alloc_size * 2;
+                const new = allocator.alloc(u8, alloc_size) catch |err| {
+                    std.debug.print("ERROR: allocating `{any}`\n", .{err}); 
+                    std.process.exit(1);
+                };
+
+                std.debug.print("{any} - {any}\n", .{alloc_buff[0..20], alloc_buff.len});
+
+                //mem.copyForwards(u8, new, alloc_buff);
+                @memmove(new.ptr, alloc_buff);
+                allocator.free(alloc_buff);
+                alloc_buff = new;
+                std.debug.print("{any} - {any}\n", .{alloc_buff[0..20], alloc_buff.len});
+                
+                infstream.avail_out = alloc_size - prev_size;
+                infstream.next_out = alloc_buff[prev_size..].ptr;
+                continue;
+            }
+ 
+            const len = read(u32, raw_png, pos);
+            assert(len < raw_png.len - pos.*);
+            pos.* += 4;
+
+            infstream.avail_in = len;
+            infstream.next_in = @constCast(raw_png[pos.*..pos.* + len]).ptr;
+            pos.* += len;
+            crc = read(u32, raw_png, pos);
         }
-
-        assert(infl_res == z.Z_STREAM_END);
-        const iend_res = z.inflateEnd(&infstream);
-        assert(iend_res == z.Z_OK);
-
-        idat.size = infstream.total_out;
-        return idat;
     }
 };
 
@@ -242,8 +256,12 @@ fn get_filter_type(idat: *IDAT, ihdr: *IHDR, line: u32) u8 {
     return idat.data[get_start_of_line(ihdr, line)];
 }
 
+fn get_line_width(ihdr: *IHDR) u64 {
+    return @as(u64, ihdr.*.width) * @as(u64, ihdr.get_bits_per_pixel());
+}
+
 fn get_start_of_line(ihdr: *IHDR, line: u32) u64 {
-    return @as(u64, line) * @as(u64, ihdr.*.width) * @as(u64, ihdr.get_bits_per_pixel()) + @as(u64, line);
+    return @as(u64, line) * get_line_width(ihdr) + @as(u64, line);
 }
 
 fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
@@ -254,18 +272,18 @@ fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
     pixel_buffer[idx.* + 0] = @intCast(r);
     pixel_buffer[idx.* + 1] = @intCast(g);
     pixel_buffer[idx.* + 2] = @intCast(b);
-    idx.* += 3;
+    idx.* += COLOR_CHANNELS;
 }
 
-fn apply_filter(idat: *IDAT, ihdr: *IHDR, plte: *PLTE, line: *u32, pixel_buffer: []u8) void {
+fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer: []u8) void {
     const filter: u8 = get_filter_type(idat, ihdr, line.*);
 
     switch (filter) {
         0 => copy_scanline(ihdr, plte, idat, line.*, pixel_buffer),
-        1 => subtract_filter(ihdr, plte, idat, line.*, pixel_buffer),
-        2 => {std.debug.print("error\n", .{});},
-        3 => {std.debug.print("error\n", .{});},
-        4 => {std.debug.print("error\n", .{});},
+        1 => subtract_filter(ihdr, plte, idat, line.*, true, pixel_buffer),
+        2 => subtract_filter(ihdr, plte, idat, line.*, false, pixel_buffer),
+        3 => average_filter(ihdr, plte, idat, line.*, pixel_buffer),
+        4 => paeth_filter(ihdr, plte, idat, line.*, pixel_buffer),
         else => {
             std.debug.print("ERROR: invalid filter algorithm=`{any}`\n", .{filter});
             std.process.exit(1);
@@ -276,34 +294,43 @@ fn apply_filter(idat: *IDAT, ihdr: *IHDR, plte: *PLTE, line: *u32, pixel_buffer:
 }
 
 fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
-    var pos = get_start_of_line(ihdr, line) + 1;
+    const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
+    var pos = beg;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
-    while (pos <= ihdr.*.width * bpp) {
+    while (pos - beg < ihdr.*.width * bpp) {
         const color = idat.get_color_value(ihdr, plte, &pos);
         set_pixel_in_buffer(pixel_buffer, color, &idx);
     }
 }
 
-fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
-    std.debug.print("yeah\n", .{});
-    const zero = get_start_of_line(ihdr, line);
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
-    var pos = zero + 1;
+// NOTE: there are two subtract filters (left and up)
+fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bool, pixel_buffer: []u8) void {
+    const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
+    var pos = beg;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
-    while (pos <= ihdr.*.width * bpp) {
-        var cur: u64 = 0;
+    while (pos - beg < ihdr.*.width * bpp) {
+        var cur_pixel: u64 = 0;
 
-        while (cur < bpp) {
-            const prev: u16 = if (pos < zero + 1 + bpp) 0 else @intCast(idat.*.data[pos - bpp]);
+        while (cur_pixel < bpp) {
+            var prev: u16 = 0;
+
+            if          (is_left and pos - beg >= bpp) {
+                prev = @intCast(idat.*.data[pos - bpp]);
+            } else if   (!is_left and line > 0) {
+                prev = @intCast(idat.*.data[pos - get_line_width(ihdr) - 1]);
+            }
+
             const curr: u16 = @intCast(idat.*.data[pos]);
             const value: u8 = @intCast((curr + prev) % 256);
 
-            idat.*.data[pos + cur] = value;
-            cur += 1;
+            idat.*.data[pos] = value;
+
             pos += 1;
+            cur_pixel += 1;
         }
 
         pos -= bpp;
@@ -311,6 +338,80 @@ fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffe
         set_pixel_in_buffer(pixel_buffer, color, &idx);
     }
 }
+
+fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+    const beg = get_start_of_line(ihdr, line) + 1;
+    const bpp = ihdr.get_bits_per_pixel();
+    var pos = beg;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+
+    while (pos - beg < ihdr.*.width * bpp) {
+        var cur_pixel: u64 = 0;
+
+        while (cur_pixel < bpp) {
+            const left: u16 = if (pos - beg < bpp) 0 else @intCast(idat.data[pos - bpp]);
+            const up: u16   = if (line       == 0) 0 
+                else @intCast(idat.data[pos - get_line_width(ihdr) - 1]);
+
+            const sum: f64 = @as(f64, @floatFromInt(left)) + @as(f64, @floatFromInt(up));
+            const average: u16 = @as(u16, @intFromFloat(@floor(sum / 2.0)));
+            const correct: u16 = @as(u16, idat.data[pos]) + average;
+
+            idat.data[pos] = @intCast(correct % 256);
+            pos += 1;
+            cur_pixel += 1;
+        }
+
+        pos -= bpp;
+        const color = idat.get_color_value(ihdr, plte, &pos);
+        set_pixel_in_buffer(pixel_buffer, color, &idx);
+    }
+}
+
+fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+    const beg = get_start_of_line(ihdr, line) + 1;
+    const bpp = ihdr.get_bits_per_pixel();
+    var pos = beg;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+
+    while (pos - beg < ihdr.*.width * bpp) {
+        var cur_pixel: u64 = 0;
+
+        while (cur_pixel < bpp) {
+            const line_width = get_line_width(ihdr) + 1;
+
+            const a: i16 = if (pos - beg < bpp) 0 else @intCast(idat.*.data[pos - bpp]);
+            const b: i16 = if (line == 0) 0 else @intCast(idat.*.data[pos - line_width]);
+            const c: i16 = if (pos - beg < bpp or line == 0) 0 
+                else @intCast(idat.*.data[pos - bpp - line_width]);
+
+            const p: i16 = a + b - c;
+            const pa: u16 = @abs(p - a);
+            const pb: u16 = @abs(p - b);
+            const pc: u16 = @abs(p - c);
+
+            var value: u16 = 0;
+            if (pa <= pb and pa <= pc) {
+                value = @intCast(a);
+            } else if (pb <= pc) {
+                value = @intCast(b);
+            } else {
+                value = @intCast(c);
+            }
+
+            value = ((value + idat.*.data[pos]) % 256);
+            idat.*.data[pos] = @intCast(value);
+            pos += 1;
+            cur_pixel += 1;
+        }
+
+        pos -= bpp;
+        const color = idat.get_color_value(ihdr, plte, &pos);
+        set_pixel_in_buffer(pixel_buffer, color, &idx);
+    }
+}
+
+
 
 pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     // NOTE: png has to have a png signature
@@ -326,6 +427,8 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         const chunk_type = read_slice(raw_png, &pos, 4);
         assert(length <= raw_png.len - pos);
 
+        std.debug.print("{s}\n", .{chunk_type});
+
         if          (mem.eql(u8, &png_idat, chunk_type)) {
             idat = IDAT.read_chunk(allocator, raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
@@ -340,7 +443,6 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         _ = crc;
     }
 
-    std.debug.print("{any}\n", .{ihdr});
     const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * COLOR_CHANNELS) catch |err| {
         std.debug.print("{any}\n", .{err});
         std.process.exit(1);
@@ -348,12 +450,12 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
 
     var line: u32 = 0;
     while (line < ihdr.height) {
-        apply_filter(&idat, &ihdr, &plte, &line, pixel_buffer);
+        apply_filter(&ihdr, &plte, &idat, &line, pixel_buffer);
     }
+
     Ppm.write_pixel_buffer(allocator, ihdr.width, ihdr.height, pixel_buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
     };
-
 
     //std.debug.print("{any} - {any} | {any}\n", .{ihdr, plte, idat.data.len});
     //Ppm.write_png(allocator, ihdr, plte, idat) catch |err| {
