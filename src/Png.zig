@@ -14,6 +14,13 @@ const png_plte  = [_]u8{'P', 'L', 'T', 'E'};
 const png_idat  = [_]u8{'I', 'D', 'A', 'T'};
 const png_iend  = [_]u8{'I', 'E', 'N', 'D'};
 
+const RGB: u8 = 3;
+const RGBA: u8 = 4;
+// NOTE: currently rgb -> 3 might include alpha
+// and this should be in a different place since
+// other formats also need to know this
+pub const COLOR_CHANNELS: u8 = RGB;
+
 // TODO: a compiler macro should do this but I can't get them to work
 fn read(comptime T: type, raw_png: []const u8, pos: *u32) T {
     const len: T = @bitSizeOf(T) / 8;
@@ -46,6 +53,33 @@ pub const IHDR = struct {
     compression_method: u8,
     filter_method: u8,
     interlace_method: u8,
+
+    fn get_bits_per_pixel(self: *IHDR) u8 {
+        // TODO: support sub byte pixels
+        assert(self.*.bit_depth > 7);
+
+        switch (self.*.color_type) {
+            0 => assert(self.*.bit_depth == 1 or self.*.bit_depth == 2 
+                     or self.*.bit_depth == 4 or self.*.bit_depth == 8
+                     or self.*.bit_depth == 16),
+            3 => assert(self.*.bit_depth == 1 or self.*.bit_depth == 2
+                     or self.*.bit_depth == 4 or self.*.bit_depth == 8),
+            2 => {
+                assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
+                return self.*.bit_depth / 8 * RGB;
+            },
+            4, 6 => {
+                assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
+                return self.*.bit_depth / 8 * RGBA;
+            },
+            else => {
+                std.debug.print("ERROR: invalid color_type={any}\n", .{self.*.color_type});
+                std.process.exit(1);
+            }
+        }
+ 
+        return self.*.bit_depth / 8;
+    }
 
     fn read_chunk(raw_png: []const u8, pos: *u32) IHDR {
         const length = read(u32, raw_png, pos);
@@ -106,6 +140,46 @@ pub const IDAT = struct {
     data: []u8,
     size: u64,
 
+    fn get_color_value(self: *IDAT, ihdr: *IHDR, plte: *PLTE, pos: *u64) u32 {
+        switch (ihdr.*.color_type) {
+            0, 4 => assert(false),
+            2, 6 => {
+                var r = @as(u32, self.*.data[pos.* + 0]);
+                var g = @as(u32, self.*.data[pos.* + 1]);
+                var b = @as(u32, self.*.data[pos.* + 2]);
+
+                if (ihdr.*.color_type == 6) {
+                    const value = @as(f32, @floatFromInt(self.*.data[pos.* + 3]));
+                    const alpha = value / 255.0;
+
+                    const rf = @as(f32, @floatFromInt(r)) * alpha;
+                    const gf = @as(f32, @floatFromInt(g)) * alpha;
+                    const bf = @as(f32, @floatFromInt(b)) * alpha;
+                    r = @intFromFloat(rf);
+                    g = @intFromFloat(gf);
+                    b = @intFromFloat(bf);
+                    pos.* += 4;
+                } else {
+                    pos.* += 3;
+                }
+
+                return r << 16 | g << 8 | b;
+            },
+            3 => {
+                const index: u8  = self.*.data[pos.*];
+                const color: u32 = plte.palette[index];
+                pos.* += 1;
+                return color;
+            },
+            else => {
+                std.debug.print("ERROR: invalid color_type=`{any}`\n", .{ihdr.*.color_type});
+                std.process.exit(1);
+            }
+        }
+
+        return 0;
+    }
+
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
         const size = 64 * 1024 * 1024;
         const buff = allocator.alloc(u8, size) catch |err| { 
@@ -133,11 +207,9 @@ pub const IDAT = struct {
             var crc = read(u32, raw_png, pos);
 
             while (true) {
-                std.debug.print("{any}\n", .{pos.*});
                 const len = read(u32, raw_png, pos);
                 assert(len < raw_png.len - pos.*);
-                const cty = read_slice(raw_png, pos, 4);
-                std.debug.print("LEN: {any} - ctyp: {s}\n",. {len, cty});
+                pos.* += 4;
 
                 infstream.avail_in = len;
                 infstream.next_in = @constCast(raw_png[pos.*..pos.* + len]).ptr;
@@ -166,19 +238,92 @@ pub const IDAT = struct {
     }
 };
 
+fn get_filter_type(idat: *IDAT, ihdr: *IHDR, line: u32) u8 {
+    return idat.data[get_start_of_line(ihdr, line)];
+}
+
+fn get_start_of_line(ihdr: *IHDR, line: u32) u64 {
+    return @as(u64, line) * @as(u64, ihdr.*.width) * @as(u64, ihdr.get_bits_per_pixel()) + @as(u64, line);
+}
+
+fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
+    const r = color >> 16;
+    const g = (color >> 8) & 0xFF;
+    const b = (color >> 0) & 0xFF;
+
+    pixel_buffer[idx.* + 0] = @intCast(r);
+    pixel_buffer[idx.* + 1] = @intCast(g);
+    pixel_buffer[idx.* + 2] = @intCast(b);
+    idx.* += 3;
+}
+
+fn apply_filter(idat: *IDAT, ihdr: *IHDR, plte: *PLTE, line: *u32, pixel_buffer: []u8) void {
+    const filter: u8 = get_filter_type(idat, ihdr, line.*);
+
+    switch (filter) {
+        0 => copy_scanline(ihdr, plte, idat, line.*, pixel_buffer),
+        1 => subtract_filter(ihdr, plte, idat, line.*, pixel_buffer),
+        2 => {std.debug.print("error\n", .{});},
+        3 => {std.debug.print("error\n", .{});},
+        4 => {std.debug.print("error\n", .{});},
+        else => {
+            std.debug.print("ERROR: invalid filter algorithm=`{any}`\n", .{filter});
+            std.process.exit(1);
+        }
+    }
+
+    line.* += 1;
+}
+
+fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var pos = get_start_of_line(ihdr, line) + 1;
+    const bpp = ihdr.get_bits_per_pixel();
+
+    while (pos <= ihdr.*.width * bpp) {
+        const color = idat.get_color_value(ihdr, plte, &pos);
+        set_pixel_in_buffer(pixel_buffer, color, &idx);
+    }
+}
+
+fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+    std.debug.print("yeah\n", .{});
+    const zero = get_start_of_line(ihdr, line);
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var pos = zero + 1;
+    const bpp = ihdr.get_bits_per_pixel();
+
+    while (pos <= ihdr.*.width * bpp) {
+        var cur: u64 = 0;
+
+        while (cur < bpp) {
+            const prev: u16 = if (pos < zero + 1 + bpp) 0 else @intCast(idat.*.data[pos - bpp]);
+            const curr: u16 = @intCast(idat.*.data[pos]);
+            const value: u8 = @intCast((curr + prev) % 256);
+
+            idat.*.data[pos + cur] = value;
+            cur += 1;
+            pos += 1;
+        }
+
+        pos -= bpp;
+        const color = idat.get_color_value(ihdr, plte, &pos);
+        set_pixel_in_buffer(pixel_buffer, color, &idx);
+    }
+}
+
 pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     // NOTE: png has to have a png signature
     assert(raw_png.len >= 8 and mem.eql(u8, &png_sig, raw_png[0..8]));
 
     var pos: u32 = 8;
-    const ihdr = IHDR.read_chunk(raw_png, &pos);
+    var ihdr = IHDR.read_chunk(raw_png, &pos);
     var idat   = IDAT{ .data = undefined, .size = undefined };
     var plte   = PLTE{ .palette = undefined, .palette_size = undefined, };
 
     while (true) {
         const length = read(u32, raw_png, &pos);
         const chunk_type = read_slice(raw_png, &pos, 4);
-        std.debug.print("LENGTH: {any} - {any} - ctyp: {s}\n",. {raw_png.len, length, chunk_type});
         assert(length <= raw_png.len - pos);
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
@@ -194,26 +339,28 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         const crc = read(u32, raw_png, &pos);
         _ = crc;
     }
- 
 
-    std.debug.print("{any} - {any} | {any}\n", .{ihdr, plte, idat.data.len});
-    Ppm.write_png(allocator, ihdr, plte, idat) catch |err| {
+    std.debug.print("{any}\n", .{ihdr});
+    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * COLOR_CHANNELS) catch |err| {
+        std.debug.print("{any}\n", .{err});
+        std.process.exit(1);
+    };
+
+    var line: u32 = 0;
+    while (line < ihdr.height) {
+        apply_filter(&idat, &ihdr, &plte, &line, pixel_buffer);
+    }
+    Ppm.write_pixel_buffer(allocator, ihdr.width, ihdr.height, pixel_buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
     };
+
+
+    //std.debug.print("{any} - {any} | {any}\n", .{ihdr, plte, idat.data.len});
+    //Ppm.write_png(allocator, ihdr, plte, idat) catch |err| {
+    //    std.debug.print("{any}\n", .{err});
+    //};
     allocator.free(idat.data);
-
-    //std.debug.print("{x}\n", .{raw_png[pos..pos + 4]});
-    //
-
-    //const plte = PLTE.read_chunk(raw_png, &pos, length);
-    //_ = plte;
-
-    //length = read(u32, raw_png, &pos);
-    //assert(length < raw_png.len - pos);
-    //chunk_type = read_slice(raw_png, &pos, 4);
-
-    //std.debug.print("{any}: {s}\n", .{length, chunk_type});
-
+    allocator.free(pixel_buffer);
 }
 
 

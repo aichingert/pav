@@ -14,6 +14,38 @@ fn write_number_with_end(comptime T: type, buffer: []u8, pos: *u64, number: T, e
     pos.* += 1;
 }
 
+pub fn write_pixel_buffer(allocator: Allocator, width: u32, height: u32, pixel_buffer: []u8) !void {
+    // NOTE: allocating way too much at the moment
+    var buffer: []u8 = try allocator.alloc(u8, 3 * 30 + pixel_buffer.len * 4);
+
+    const file = try std.fs.cwd().createFile("image.ppm", .{ .read = true });
+    for (ppm_init, 0..) |c, i| {
+        buffer[i] = c;
+    }
+
+    var ppm_pos: u64 = ppm_init.len;
+    var pix_pos: u64 = 0;
+
+    try write_number_with_end(u32, buffer, &ppm_pos, width, ' ');
+    try write_number_with_end(u32, buffer, &ppm_pos, height, ' ');
+    try write_number_with_end(u32, buffer, &ppm_pos, 255, '\n');
+
+    while (pix_pos < pixel_buffer.len) {
+        var channels = Png.COLOR_CHANNELS;
+        while (channels > 0) {
+            try write_number_with_end(u8, buffer, &ppm_pos, pixel_buffer[pix_pos], ' ');
+
+            pix_pos += 1;
+            channels -= 1;
+        }
+    }
+
+    try file.writeAll(buffer[0..ppm_pos]);
+    file.close();
+    allocator.free(buffer);
+
+}
+
 pub fn write_png(allocator: Allocator, ihdr: Png.IHDR, plte: Png.PLTE, idat: Png.IDAT) !void {
     const file = try std.fs.cwd().createFile("image.ppm", .{ .read = true });
     var buffer: []u8 = try allocator.alloc(u8, 3 * 30 + ihdr.width * ihdr.height * 3 * 10);
