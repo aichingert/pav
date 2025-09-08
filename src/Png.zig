@@ -37,7 +37,7 @@ fn read_slice(raw_png: []const u8, pos: *u32, len: u32) []const u8 {
     return sliced;
 }
 
-const IHDR = struct {
+pub const IHDR = struct {
     width: u32,
     height: u32,
 
@@ -127,28 +127,30 @@ pub const IDAT = struct {
         const init_res = z.inflateInit(&infstream);
         assert(init_res == z.Z_OK);
         var infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
+        pos.* += length;
 
         if (infl_res != z.Z_STREAM_END) {
-            pos.* += length;
             var crc = read(u32, raw_png, pos);
 
             while (true) {
+                std.debug.print("{any}\n", .{pos.*});
                 const len = read(u32, raw_png, pos);
                 assert(len < raw_png.len - pos.*);
-                pos.* += 4;
+                const cty = read_slice(raw_png, pos, 4);
+                std.debug.print("LEN: {any} - ctyp: {s}\n",. {len, cty});
 
                 infstream.avail_in = len;
-                infstream.next_in = @constCast(raw_png[pos.*..pos.* + length]).ptr;
+                infstream.next_in = @constCast(raw_png[pos.*..pos.* + len]).ptr;
                 infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
 
+                pos.* += len;
+
                 if (infl_res == z.Z_STREAM_END) {
-                    pos.* -= 8;
                     idat.size = infstream.total_out;
                     idat.data = buff;
                     return idat;
                 }
 
-                pos.* += len;
                 crc = read(u32, raw_png, pos);
             }
 
@@ -159,7 +161,6 @@ pub const IDAT = struct {
         const iend_res = z.inflateEnd(&infstream);
         assert(iend_res == z.Z_OK);
 
-        pos.* += length;
         idat.size = infstream.total_out;
         return idat;
     }
@@ -177,8 +178,8 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     while (true) {
         const length = read(u32, raw_png, &pos);
         const chunk_type = read_slice(raw_png, &pos, 4);
-        std.debug.print("{any}\n", .{pos});
-        assert(length < raw_png.len - pos);
+        std.debug.print("LENGTH: {any} - {any} - ctyp: {s}\n",. {raw_png.len, length, chunk_type});
+        assert(length <= raw_png.len - pos);
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
             idat = IDAT.read_chunk(allocator, raw_png, &pos, length);
@@ -195,7 +196,8 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     }
  
 
-    Ppm.write_png(allocator, ihdr.width, ihdr.height, plte, idat) catch |err| {
+    std.debug.print("{any} - {any} | {any}\n", .{ihdr, plte, idat.data.len});
+    Ppm.write_png(allocator, ihdr, plte, idat) catch |err| {
         std.debug.print("{any}\n", .{err});
     };
     allocator.free(idat.data);

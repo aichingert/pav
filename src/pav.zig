@@ -13,15 +13,20 @@ pub fn main() !void {
         }
     }
 
-    const file = try std.fs.cwd().openFile("../image.png", .{});
+    //const file = try std.fs.cwd().openFile("../computer.png", .{});
+    //const file = try std.fs.cwd().openFile("../omni-man.png", .{});
+    //const file = try std.fs.cwd().openFile("../image.png", .{});
+    const file = try std.fs.cwd().openFile("../image-white.png", .{});
     defer file.close();
 
-    var raw_data: [4 * 1024 * 1024]u8 = undefined;
-    var reader = std.fs.File.Reader.init(file, &raw_data);
-    const read_len = try reader.read(&raw_data);
+    const file_size = try file.getEndPos();
+    const raw_data = try allocator.alloc(u8, file_size);
+    var reader = std.fs.File.Reader.init(file, raw_data);
+    const read_len = try reader.read(raw_data);
 
-    std.debug.print("{d}\n", .{read_len});
-    Png.extract_pixels(allocator, &raw_data);
+    std.debug.print("FILE_SIZE: {any} \\ READ_LEN: {any}\n", .{file_size, read_len});
+    Png.extract_pixels(allocator, raw_data);
+    allocator.free(raw_data);
 }
 
 
