@@ -24,20 +24,13 @@ pub fn write_pixel_buffer(allocator: Allocator, width: u32, height: u32, pixel_b
     }
 
     var ppm_pos: u64 = ppm_init.len;
-    var pix_pos: u64 = 0;
 
     try write_number_with_end(u32, buffer, &ppm_pos, width, ' ');
     try write_number_with_end(u32, buffer, &ppm_pos, height, ' ');
     try write_number_with_end(u32, buffer, &ppm_pos, 255, '\n');
 
-    while (pix_pos < pixel_buffer.len) {
-        var channels = Png.COLOR_CHANNELS;
-        while (channels > 0) {
-            try write_number_with_end(u8, buffer, &ppm_pos, pixel_buffer[pix_pos], ' ');
-
-            pix_pos += 1;
-            channels -= 1;
-        }
+    for (pixel_buffer) |pixel| {
+        try write_number_with_end(u8, buffer, &ppm_pos, pixel, ' ');
     }
 
     try file.writeAll(buffer[0..ppm_pos]);
