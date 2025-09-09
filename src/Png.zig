@@ -3,6 +3,7 @@ const z   = @cImport(
     @cInclude("zlib.h")
 );
 const Ppm = @import("Ppm.zig");
+const Voronoi = @import("Voronoi.zig");
 
 const mem = std.mem;
 const assert = std.debug.assert;
@@ -13,13 +14,6 @@ const png_ihdr  = [_]u8{'I', 'H', 'D', 'R'};
 const png_plte  = [_]u8{'P', 'L', 'T', 'E'};
 const png_idat  = [_]u8{'I', 'D', 'A', 'T'};
 const png_iend  = [_]u8{'I', 'E', 'N', 'D'};
-
-const RGB: u8 = 3;
-const RGBA: u8 = 4;
-// NOTE: currently rgb -> 3 might include alpha
-// and this should be in a different place since
-// other formats also need to know this
-pub const COLOR_CHANNELS: u8 = RGB;
 
 // TODO: a compiler macro should do this but I can't get them to work
 fn read(comptime T: type, raw_png: []const u8, pos: *u32) T {
@@ -66,11 +60,11 @@ pub const IHDR = struct {
                      or self.*.bit_depth == 4 or self.*.bit_depth == 8),
             2 => {
                 assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
-                return self.*.bit_depth / 8 * RGB;
+                return self.*.bit_depth / 8 * Voronoi.RGB;
             },
             4, 6 => {
                 assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
-                return self.*.bit_depth / 8 * RGBA;
+                return self.*.bit_depth / 8 * Voronoi.RGBA;
             },
             else => {
                 std.debug.print("ERROR: invalid color_type={any}\n", .{self.*.color_type});
@@ -181,8 +175,9 @@ pub const IDAT = struct {
     }
 
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
-        var alloc_size: u32 = 4096;
-        var alloc_buff = allocator.alloc(u8, alloc_size) catch |err| { 
+        // TODO: implement chunk reading properly with fixed size buffers
+        const alloc_size: u32 = 1 << 31;
+        const alloc_buff = allocator.alloc(u8, alloc_size) catch |err| { 
             std.debug.print("ERROR: allocating `{any}`\n", .{err}); 
             std.process.exit(1);
         };
@@ -201,14 +196,7 @@ pub const IDAT = struct {
 
         while (true) {
             const infl_res = z.inflate(&infstream, z.Z_NO_FLUSH);
-            std.debug.print("{any}\n", .{infl_res});
-            if (infl_res == -3) {
-                std.debug.print("{s}\n", .{infstream.msg});
-            }
-
-            assert(infl_res == z.Z_OK 
-                or infl_res == z.Z_STREAM_END 
-                or infl_res == z.Z_BUF_ERROR);
+            assert(infl_res == z.Z_OK or infl_res == z.Z_STREAM_END);
 
             if          (infl_res == z.Z_STREAM_END) {
                 const iend_res = z.inflateEnd(&infstream);
@@ -219,27 +207,8 @@ pub const IDAT = struct {
                     .size = infstream.total_out,
                     .data = alloc_buff,
                 };
-            } else if   (infl_res == z.Z_BUF_ERROR) {
-                const prev_size = alloc_size;
-                alloc_size = alloc_size * 2;
-                const new = allocator.alloc(u8, alloc_size) catch |err| {
-                    std.debug.print("ERROR: allocating `{any}`\n", .{err}); 
-                    std.process.exit(1);
-                };
-
-                std.debug.print("{any} - {any}\n", .{alloc_buff[0..20], alloc_buff.len});
-
-                //mem.copyForwards(u8, new, alloc_buff);
-                @memmove(new.ptr, alloc_buff);
-                allocator.free(alloc_buff);
-                alloc_buff = new;
-                std.debug.print("{any} - {any}\n", .{alloc_buff[0..20], alloc_buff.len});
-                
-                infstream.avail_out = alloc_size - prev_size;
-                infstream.next_out = alloc_buff[prev_size..].ptr;
-                continue;
             }
- 
+
             const len = read(u32, raw_png, pos);
             assert(len < raw_png.len - pos.*);
             pos.* += 4;
@@ -272,7 +241,7 @@ fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
     pixel_buffer[idx.* + 0] = @intCast(r);
     pixel_buffer[idx.* + 1] = @intCast(g);
     pixel_buffer[idx.* + 2] = @intCast(b);
-    idx.* += COLOR_CHANNELS;
+    idx.* += Voronoi.COLOR_CHANNELS;
 }
 
 fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer: []u8) void {
@@ -297,7 +266,7 @@ fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer:
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         const color = idat.get_color_value(ihdr, plte, &pos);
@@ -310,7 +279,7 @@ fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bo
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -343,7 +312,7 @@ fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -372,7 +341,7 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -443,7 +412,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         _ = crc;
     }
 
-    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * COLOR_CHANNELS) catch |err| {
+    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * Voronoi.COLOR_CHANNELS) catch |err| {
         std.debug.print("{any}\n", .{err});
         std.process.exit(1);
     };
@@ -453,6 +422,9 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         apply_filter(&ihdr, &plte, &idat, &line, pixel_buffer);
     }
 
+    Voronoi.apply(allocator, ihdr.width, ihdr.height, pixel_buffer, .random) catch |err| {
+        std.debug.print("{any}\n", .{err});
+    };
     Ppm.write_pixel_buffer(allocator, ihdr.width, ihdr.height, pixel_buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
     };

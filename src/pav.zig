@@ -14,10 +14,10 @@ pub fn main() !void {
     }
 
     //const file = try std.fs.cwd().openFile("../computer-sub.png", .{});
-    //const file = try std.fs.cwd().openFile("../omni-man.png", .{});
+    const file = try std.fs.cwd().openFile("../omni-man.png", .{});
     //const file = try std.fs.cwd().openFile("../image.png", .{});
     //const file = try std.fs.cwd().openFile("../image-white.png", .{});
-    const file = try std.fs.cwd().openFile("../sky.png", .{});
+    //const file = try std.fs.cwd().openFile("../8_bit.png", .{});
             
     defer file.close();
 
