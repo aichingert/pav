@@ -409,11 +409,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     Ppm.write_pixel_buffer(allocator, ihdr.width, ihdr.height, pixel_buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
     };
-
-    //std.debug.print("{any} - {any} | {any}\n", .{ihdr, plte, idat.data.len});
-    //Ppm.write_png(allocator, ihdr, plte, idat) catch |err| {
-    //    std.debug.print("{any}\n", .{err});
-    //};
+    
     allocator.free(idat.data);
     allocator.free(pixel_buffer);
 }
