@@ -5,6 +5,10 @@ const z   = @cImport(
 const Ppm = @import("Ppm.zig");
 const Voronoi = @import("Voronoi.zig");
 
+const utils = @import("utils.zig");
+const read = utils.read;
+const read_slice = utils.read_slice;
+
 const mem = std.mem;
 const assert = std.debug.assert;
 const Allocator = mem.Allocator;
@@ -14,29 +18,6 @@ const png_ihdr  = [_]u8{'I', 'H', 'D', 'R'};
 const png_plte  = [_]u8{'P', 'L', 'T', 'E'};
 const png_idat  = [_]u8{'I', 'D', 'A', 'T'};
 const png_iend  = [_]u8{'I', 'E', 'N', 'D'};
-
-// TODO: a compiler macro should do this but I can't get them to work
-fn read(comptime T: type, raw_png: []const u8, pos: *u32) T {
-    const len: T = @bitSizeOf(T) / 8;
-    const byt: T = 8;
-    var value: T = 0;
-
-    var i: T = 0;
-    while (i < len) {
-        value |= @as(T, raw_png[pos.* + i]) << @intCast((byt * (len - i - 1)));
-        i += 1;
-    }
-
-    //const val = mem.nativeTo(u32, mem.readPackedIntNative(T, raw_png, pos.*), .little);
-    pos.* += len;
-    return value;
-}
-
-fn read_slice(raw_png: []const u8, pos: *u32, len: u32) []const u8 {
-    const sliced = raw_png[pos.*..pos.* + len];
-    pos.* += len;
-    return sliced;
-}
 
 pub const IHDR = struct {
     width: u32,

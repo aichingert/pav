@@ -53,6 +53,7 @@ pub fn apply(allocator: Allocator, width: u32, height: u32, pixel_buffer: []u8, 
     while (i < height) {
         var j: u32 = 0;
 
+        std.debug.print("{any}\n",. {i});
         while (j < width) {
             var k: u32 = 1;
             var closest: Point = points[0];
