@@ -17,15 +17,17 @@ pub const Method = enum {
 const Point = struct {
     x: u32,
     y: u32,
-};
 
-fn euclidean_distance(x: u32, y: u32, x1: u32, y1: u32) f64 {
-    const xf: f64 = @as(f64, @floatFromInt(x));
-    const yf: f64 = @as(f64, @floatFromInt(y));
-    const x1f: f64 = @as(f64, @floatFromInt(x1));
-    const y1f: f64 = @as(f64, @floatFromInt(y1));
-    return @sqrt((xf - x1f) * (xf - x1f) + (yf - y1f) * (yf - y1f));
-}
+    fn less_than(context: void, a: Point, b: Point) bool {
+        _ = context;
+
+        if (a.y == b.y) {
+            return a.x < b.x;
+        }
+
+        return a.y < b.y;
+    }
+};
 
 fn place_points_random(width: u32, height: u32, points: []Point) void {
     const random = std.crypto.random;
@@ -39,21 +41,31 @@ fn place_points_random(width: u32, height: u32, points: []Point) void {
     }
 }
 
+fn euclidean_distance(x: u32, y: u32, x1: u32, y1: u32) f64 {
+    const xf: f64 = @as(f64, @floatFromInt(x));
+    const yf: f64 = @as(f64, @floatFromInt(y));
+    const x1f: f64 = @as(f64, @floatFromInt(x1));
+    const y1f: f64 = @as(f64, @floatFromInt(y1));
+    return @sqrt((xf - x1f) * (xf - x1f) + (yf - y1f) * (yf - y1f));
+}
+
 pub fn apply(allocator: Allocator, width: u32, height: u32, pixel_buffer: []u8, method: Method) !void {
-    const points_to_place: u32 = @intFromFloat((@as(f64, @floatFromInt(width * height))) * 0.02);
-    assert(points_to_place > 0);
+    const total_points: f64 = @floatFromInt(width * height);
+    const points_to_place: u32 = @intFromFloat(total_points * 0.001);
     const points = try allocator.alloc(Point, points_to_place);
     defer allocator.free(points);
 
     switch (method) {
         .random => place_points_random(width, height, points),
     }
+    std.mem.sort(Point, points[0..], {}, Point.less_than);
+
+    var cnt: u64 = 0;
 
     var i: u32 = 0;
     while (i < height) {
         var j: u32 = 0;
 
-        std.debug.print("{any}\n",. {i});
         while (j < width) {
             var k: u32 = 1;
             var closest: Point = points[0];
@@ -68,6 +80,7 @@ pub fn apply(allocator: Allocator, width: u32, height: u32, pixel_buffer: []u8, 
                 }
 
                 k += 1;
+                cnt += 1;
             }
 
             var dst_idx = i * width * COLOR_CHANNELS + j * COLOR_CHANNELS;
@@ -75,15 +88,18 @@ pub fn apply(allocator: Allocator, width: u32, height: u32, pixel_buffer: []u8, 
             var colors: u8 = 0;
 
             while (colors < COLOR_CHANNELS) {
-                pixel_buffer[dst_idx] = pixel_buffer[src_idx];
+                if (dst_idx < pixel_buffer.len and src_idx < pixel_buffer.len) {
+                    pixel_buffer[dst_idx] = pixel_buffer[src_idx];
+                }
                 colors += 1;
                 dst_idx += 1;
                 src_idx += 1;
+                cnt += 1;
             }
             j += 1;
         }
 
         i += 1;
     }
-    std.debug.print("{any} {any} - {any}\n", .{points_to_place, pixel_buffer.len, width * height * COLOR_CHANNELS});
+    std.debug.print("{any} {any} - {any} - {any}\n", .{points_to_place, pixel_buffer.len, width * height * COLOR_CHANNELS, cnt});
 }

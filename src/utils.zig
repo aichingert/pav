@@ -20,3 +20,4 @@ pub fn read_slice(slice: []const u8, pos: *u32, len: u32) []const u8 {
     pos.* += len;
     return sliced;
 }
+

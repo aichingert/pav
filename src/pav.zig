@@ -18,7 +18,7 @@ pub fn main() !void {
     //const file = try std.fs.cwd().openFile("../image.png", .{});
     //const file = try std.fs.cwd().openFile("../image-white.png", .{});
     //const file = try std.fs.cwd().openFile("../8_bit.png", .{});
-    const file = try std.fs.cwd().openFile("../schopfhirsch.webp", .{});
+    const file = try std.fs.cwd().openFile("../mega.png", .{});
             
     defer file.close();
 
@@ -28,7 +28,7 @@ pub fn main() !void {
     const read_len = try reader.read(raw_data);
 
     std.debug.print("FILE_SIZE: {any} \\ READ_LEN: {any}\n", .{file_size, read_len});
-    Webp.extract_pixels(allocator, raw_data);
+    Png.extract_pixels(allocator, raw_data);
     allocator.free(raw_data);
 }
 
