@@ -1,12 +1,13 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    //const target = b.resolveTargetQuery(.{
-    //    .cpu_arch = .wasm32,
-    //    .os_tag = .freestanding,
-    //});
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+    });
+    const optimize = b.standardOptimizeOption(.{
+         .preferred_optimize_mode = .ReleaseSmall,
+    });
         
     const exe = b.addExecutable(.{
         .name = "pav",
@@ -16,53 +17,54 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    //exe.entry = .disabled;
+    exe.entry = .disabled;
+    exe.rdynamic = true;
 
-    const upstream = b.dependency("zlib", .{});
-    const zlib = b.addLibrary(.{
-        .name = "z",
-        .linkage = .static,
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-    });
-    zlib.addCSourceFiles(.{
-        .root = upstream.path(""),
-        .files = &.{
-            "adler32.c",
-            "crc32.c",
-            "deflate.c",
-            "infback.c",
-            "inffast.c",
-            "inflate.c",
-            "inftrees.c",
-            "trees.c",
-            "zutil.c",
-            "compress.c",
-            "uncompr.c",
-            "gzclose.c",
-            "gzlib.c",
-            "gzread.c",
-            "gzwrite.c",
-        },
-        .flags = &.{
-            "-DHAVE_SYS_TYPES_H",
-            "-DHAVE_STDINT_H",
-            "-DHAVE_STDDEF_H",
-            "-DZ_HAVE_UNISTD_H",
-        },
-    });
-    zlib.installHeadersDirectory(upstream.path(""), "", .{
-        .include_extensions = &.{
-            "zconf.h",
-            "zlib.h",
-        },
-    });
+    //const upstream = b.dependency("zlib", .{});
+    //const zlib = b.addLibrary(.{
+    //    .name = "z",
+    //    .linkage = .static,
+    //    .root_module = b.createModule(.{
+    //        .target = target,
+    //        .optimize = optimize,
+    //        .link_libc = true,
+    //    }),
+    //});
+    //zlib.addCSourceFiles(.{
+    //    .root = upstream.path(""),
+    //    .files = &.{
+    //        "adler32.c",
+    //        "crc32.c",
+    //        "deflate.c",
+    //        "infback.c",
+    //        "inffast.c",
+    //        "inflate.c",
+    //        "inftrees.c",
+    //        "trees.c",
+    //        "zutil.c",
+    //        "compress.c",
+    //        "uncompr.c",
+    //        "gzclose.c",
+    //        "gzlib.c",
+    //        "gzread.c",
+    //        "gzwrite.c",
+    //    },
+    //    .flags = &.{
+    //        "-DHAVE_SYS_TYPES_H",
+    //        "-DHAVE_STDINT_H",
+    //        "-DHAVE_STDDEF_H",
+    //        "-DZ_HAVE_UNISTD_H",
+    //    },
+    //});
+    //zlib.installHeadersDirectory(upstream.path(""), "", .{
+    //    .include_extensions = &.{
+    //        "zconf.h",
+    //        "zlib.h",
+    //    },
+    //});
 
-    exe.linkLibC();
-    exe.linkLibrary(zlib);
+    //exe.linkLibC();
+    //exe.linkLibrary(zlib);
     b.installArtifact(exe);
     
     const run_step = b.step("run", "run it");
