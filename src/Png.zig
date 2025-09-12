@@ -2,12 +2,15 @@ const std = @import("std");
 const z   = @cImport(
     @cInclude("zlib.h")
 );
-const Ppm = @import("Ppm.zig");
 const Voronoi = @import("Voronoi.zig");
 
 const utils = @import("utils.zig");
 const read = utils.read;
 const read_slice = utils.read_slice;
+const Image = utils.Image;
+const RGB = utils.RGB;
+const RGBA = utils.RGBA;
+const COLOR_CHANNELS = utils.COLOR_CHANNELS;
 
 const mem = std.mem;
 const assert = std.debug.assert;
@@ -41,11 +44,11 @@ pub const IHDR = struct {
                      or self.*.bit_depth == 4 or self.*.bit_depth == 8),
             2 => {
                 assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
-                return self.*.bit_depth / 8 * Voronoi.RGB;
+                return self.*.bit_depth / 8 * RGB;
             },
             4, 6 => {
                 assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
-                return self.*.bit_depth / 8 * Voronoi.RGBA;
+                return self.*.bit_depth / 8 * RGBA;
             },
             else => {
                 std.debug.print("ERROR: invalid color_type={any}\n", .{self.*.color_type});
@@ -222,7 +225,7 @@ fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
     pixel_buffer[idx.* + 0] = @intCast(r);
     pixel_buffer[idx.* + 1] = @intCast(g);
     pixel_buffer[idx.* + 2] = @intCast(b);
-    idx.* += Voronoi.COLOR_CHANNELS;
+    idx.* += COLOR_CHANNELS;
 }
 
 fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer: []u8) void {
@@ -247,7 +250,7 @@ fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer:
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         const color = idat.get_color_value(ihdr, plte, &pos);
@@ -260,7 +263,7 @@ fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bo
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -293,7 +296,7 @@ fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -322,7 +325,7 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * Voronoi.COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
 
     while (pos - beg < ihdr.*.width * bpp) {
         var cur_pixel: u64 = 0;
@@ -361,9 +364,7 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
     }
 }
 
-
-
-pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
+pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) Image {
     // NOTE: png has to have a png signature
     assert(raw_png.len >= 8 and mem.eql(u8, &png_sig, raw_png[0..8]));
 
@@ -376,8 +377,6 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         const length = read(u32, raw_png, &pos);
         const chunk_type = read_slice(raw_png, &pos, 4);
         assert(length <= raw_png.len - pos);
-
-        std.debug.print("{s}\n", .{chunk_type});
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
             idat = IDAT.read_chunk(allocator, raw_png, &pos, length);
@@ -393,7 +392,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
         _ = crc;
     }
 
-    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * Voronoi.COLOR_CHANNELS) catch |err| {
+    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * utils.COLOR_CHANNELS) catch |err| {
         std.debug.print("{any}\n", .{err});
         std.process.exit(1);
     };
@@ -402,16 +401,13 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) void {
     while (line < ihdr.height) {
         apply_filter(&ihdr, &plte, &idat, &line, pixel_buffer);
     }
-
-    Voronoi.apply(allocator, ihdr.width, ihdr.height, pixel_buffer, .random) catch |err| {
-        std.debug.print("{any}\n", .{err});
-    };
-    Ppm.write_pixel_buffer(allocator, ihdr.width, ihdr.height, pixel_buffer) catch |err| {
-        std.debug.print("{any}\n", .{err});
-    };
-    
     allocator.free(idat.data);
-    allocator.free(pixel_buffer);
+
+    return .{
+        .width = ihdr.width,
+        .height = ihdr.height,
+        .pixels = pixel_buffer,
+    }; 
 }
 
 

@@ -1,3 +1,15 @@
+pub const RGB: u8 = 3;
+pub const RGBA: u8 = 4;
+
+// NOTE: currently rgb might include alpha
+pub const COLOR_CHANNELS: u8 = RGB;
+
+pub const Image = struct {
+    width: u32,
+    height: u32,
+    pixels: []u8,
+};
+
 // TODO: a compiler macro should do this but I can't get them to work
 pub fn read(comptime T: type, slice: []const u8, pos: *u32) T {
     const len: T = @bitSizeOf(T) / 8;
