@@ -1,5 +1,12 @@
+name: deploy website
+on:
+  push:
+    branches:
+      - main
+
 jobs:
   deploy:
+    name: build zig
     runs-on: ubuntu-latest
 
     steps:
