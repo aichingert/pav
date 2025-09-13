@@ -5,15 +5,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: build zig
+  build:
     runs-on: ubuntu-latest
 
     steps:
+      - name: build zig
+        id: build
       - uses: actions/checkout@v5
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.1
       - run: |
           zig build -Dtarget=wasm32-freestanding
+
+      - name: upload files
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: output/
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: deploy to gh pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
 
