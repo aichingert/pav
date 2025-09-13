@@ -1,0 +1,14 @@
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: build
+        id: build
+        uses: actions/checkout@v5
+        uses: mlugg/setup-zig@v2
+          with:
+            version: 0.15.1
+        run: |
+          zig build -Dtarget=wasm32-freestanding
+
