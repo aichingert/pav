@@ -27,7 +27,7 @@ jobs:
           zig build -Dtarget=wasm32-freestanding
       - name: add website contents to file
         run: |
-          move www/* zig-out/bin/
+          mv www/* zig-out/bin/
 
       - name: upload files
         uses: actions/upload-pages-artifact@v3
