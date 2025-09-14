@@ -6,21 +6,20 @@ on:
 
 jobs:
   build:
+    name: building
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
       - name: build zig
-        uses: mlugg/setup-zig@v2
-        id: build
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.1
-        run: |
+      - run: |
           zig build -Dtarget=wasm32-freestanding
 
       - name: upload files
-        id: deployment
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: output/
   deploy:
@@ -29,7 +28,6 @@ jobs:
 
     steps:
       - name: deploy to gh pages
-        id: deployment
         uses: actions/deploy-pages@v4
 
 
