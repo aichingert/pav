@@ -10,18 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: build zig
-      - uses: actions/checkout@v5
-      - uses: mlugg/setup-zig@v2
+      - name: clone
+        uses: actions/checkout@v5
+
+      - name: setup zig
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.1
-      - run: |
+
+      - name: building zig
+        run: |
           zig build -Dtarget=wasm32-freestanding
 
       - name: upload files
-      - uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v3
         with:
           path: output/
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -29,5 +34,4 @@ jobs:
     steps:
       - name: deploy to gh pages
         uses: actions/deploy-pages@v4
-
 
