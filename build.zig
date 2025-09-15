@@ -17,11 +17,6 @@ pub fn build(b: *std.Build) void {
         lib.entry = .disabled;
         lib.rdynamic = true;
         b.installArtifact(lib);
-        b.installDirectory(.{
-            .source_dir = b.path("zig-out/bin"),
-            .install_dir = .bin,
-            .install_subdir = "../../",
-        });
         return;
     }
         
