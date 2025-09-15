@@ -25,14 +25,12 @@ jobs:
       - name: building zig
         run: |
           zig build -Dtarget=wasm32-freestanding
-      - name: add website contents to file
-        run: |
-          mv www/* zig-out/bin/
+          mv zig-out/bin/* www/
 
       - name: upload files
         uses: actions/upload-pages-artifact@v3
         with:
-          path: zig-out/bin/
+          path: www/
 
   deploy:
     runs-on: ubuntu-latest
