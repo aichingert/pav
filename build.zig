@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const vkgen = @import("vulkan_zig");
+
 pub fn build(b: *std.Build) void {
     // wasm: cpu_arch .wasm32, os_tag = .freestanding
     const target = b.standardTargetOptions(.{});
@@ -19,12 +21,13 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(lib);
         return;
     }
-        
+
     const exe = b.addExecutable(.{
         .name = "pav",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/pav_cli.zig"),
             .target = target,
+            .link_libc = true,
             .optimize = optimize,
         }),
     });
@@ -72,8 +75,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    exe.linkLibC();
+    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    const vulkan = b.dependency("vulkan_zig", .{
+        .registry = registry,
+    }).module("vulkan-zig");
+
     exe.linkLibrary(zlib);
+    exe.root_module.addImport("vulkan", vulkan);
     b.installArtifact(exe);
     
     const run_step = b.step("run", "run it");

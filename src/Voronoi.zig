@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const vk = @import("vulkan");
+
 const utils = @import("utils.zig");
 const Image = utils.Image;
 const COLOR_CHANNELS = utils.COLOR_CHANNELS;
@@ -48,6 +50,10 @@ fn euclidean_distance(x: u32, y: u32, x1: u32, y1: u32) f64 {
 }
 
 pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
+    //const instance = vk.createInstance(.{});
+    //_ = instance;
+
+
     const total_points: f64 = @floatFromInt(image.*.width * image.*.height);
     const points_to_place: u32 = @intFromFloat(total_points * 0.01);
     const points = try allocator.alloc(Point, points_to_place);
