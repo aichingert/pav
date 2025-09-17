@@ -49,9 +49,86 @@ fn euclidean_distance(x: u32, y: u32, x1: u32, y1: u32) f64 {
     return @sqrt((xf - x1f) * (xf - x1f) + (yf - y1f) * (yf - y1f));
 }
 
+const vk_get_instance_proc_addr = @extern(vk.PfnGetInstanceProcAddr, .{
+    .name = "vkGetInstanceProcAddr",
+    .library_name = "vulkan",
+});
+
+fn debug_utils_messenger_callback(
+    severity: vk.DebugUtilsMessageSeverityFlagsEXT, 
+    msg_type: vk.DebugUtilsMessageTypeFlagsEXT, 
+    callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT, 
+    _: ?*anyopaque
+) callconv(.c) vk.Bool32 {
+    const severity_str = 
+        if (severity.verbose_bit_ext) 
+            "verbose" 
+        else if (severity.info_bit_ext) 
+            "info" 
+        else if (severity.warning_bit_ext) 
+            "warning" 
+        else if (severity.error_bit_ext) 
+            "error" 
+        else 
+            "unknown";
+
+    const type_str = 
+        if (msg_type.general_bit_ext) 
+            "general" 
+        else if (msg_type.validation_bit_ext) 
+            "validation" 
+        else if (msg_type.performance_bit_ext) 
+            "performance" 
+        else if (msg_type.device_address_binding_bit_ext) 
+            "device addr" 
+        else 
+            "unknown";
+
+    const message: [*c]const u8 = if (callback_data) |cb_data| cb_data.p_message else "NO MESSAGE!";
+    std.debug.print("[{s}][{s}]. Message:\n  {s}\n", .{ severity_str, type_str, message });
+    return .false;
+}
+
 pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
-    //const instance = vk.createInstance(.{});
-    //_ = instance;
+    const vkb = vk.BaseWrapper.load(vk_get_instance_proc_addr);
+
+    var extensions: std.ArrayList([*:0]const u8) = .empty;
+    try extensions.append(allocator, vk.extensions.ext_debug_utils.name);
+
+    const instance_handle = try vkb.createInstance(&.{
+        .p_application_info = &.{
+            .p_application_name = "compute voronoi",
+            .application_version = @bitCast(vk.makeApiVersion(0, 0, 0, 0)),
+            .engine_version = @bitCast(vk.makeApiVersion(0, 0, 0, 0)),
+            .api_version = @bitCast(vk.makeApiVersion(0, 1, 4, 0)),
+        },
+        .enabled_extension_count = @intCast(extensions.items.len),
+        .pp_enabled_extension_names = extensions.items.ptr,
+        .flags = .{ .enumerate_portability_bit_khr = true },
+    }, null);
+
+    const vki = try allocator.create(vk.InstanceWrapper);
+    vki.* = vk.InstanceWrapper.load(instance_handle, vkb.dispatch.vkGetInstanceProcAddr.?);
+    const instance = vk.InstanceProxy.init(instance_handle, vki);
+
+    const debug_messenger = try instance.createDebugUtilsMessengerEXT(&.{
+        .message_severity = .{
+            .info_bit_ext = true,
+            .warning_bit_ext = true,
+            .error_bit_ext = true,
+        },
+        .message_type = .{
+            .general_bit_ext = true,
+            .validation_bit_ext = true,
+            .performance_bit_ext = true,
+        },
+        .pfn_user_callback = &debug_utils_messenger_callback,
+        .p_user_data = null,
+    }, null);
+    _ = debug_messenger;
+
+    extensions.deinit(allocator);
+    allocator.destroy(vki);
 
 
     const total_points: f64 = @floatFromInt(image.*.width * image.*.height);

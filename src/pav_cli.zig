@@ -7,6 +7,7 @@ const Ppm = @import("Ppm.zig");
 const Webp = @import("Webp.zig");
 
 const Voronoi = @import("Voronoi.zig");
+const ComputeContext = @import("ComputeContext.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -43,6 +44,9 @@ pub fn main() !void {
             std.process.exit(1);
         }
     }
+
+    const ctx = try ComputeContext.init(allocator);
+    defer ctx.deinit(allocator);
 
     for (paths.items) |path| {
         const file = try std.fs.cwd().openFile(path, .{});

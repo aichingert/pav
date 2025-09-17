@@ -80,8 +80,9 @@ pub fn build(b: *std.Build) void {
         .registry = registry,
     }).module("vulkan-zig");
 
-    exe.linkLibrary(zlib);
     exe.root_module.addImport("vulkan", vulkan);
+    exe.linkLibrary(zlib);
+    exe.linkSystemLibrary("vulkan");
     b.installArtifact(exe);
     
     const run_step = b.step("run", "run it");
