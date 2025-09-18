@@ -1,5 +1,3 @@
-const std = @import("std");
-
 pub const RGB: u8 = 3;
 pub const RGBA: u8 = 4;
 
@@ -35,7 +33,3 @@ pub fn read_slice(slice: []const u8, pos: *u32, len: u32) []const u8 {
     return sliced;
 }
 
-pub fn unwrap(e: anyerror, msg: []const u8) void {
-    std.debug.print("ERROR: {msg} - {any}\n", .{msg, e});
-    std.process.exit(1);
-}

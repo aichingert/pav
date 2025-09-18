@@ -3,7 +3,6 @@ zig-out
 *.ppm
 *.png
 *.wasm
-*.comp
 *.spv
 
 !android-chrome-192x192.png  
