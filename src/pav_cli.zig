@@ -48,8 +48,8 @@ pub fn main() !void {
 
     var ctx = try ComputeContext.init(allocator);
     defer ctx.deinit(allocator);
-    var vkv = VkVoronoi.init(&ctx);
-    vkv.allocate_image_memory(allocator);
+    const vkv = try VkVoronoi.init(&ctx);
+    _ = vkv;
 
     for (paths.items) |path| {
         const file = try std.fs.cwd().openFile(path, .{});
