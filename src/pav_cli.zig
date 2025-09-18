@@ -6,7 +6,8 @@ const Png = @import("Png.zig");
 const Ppm = @import("Ppm.zig");
 const Webp = @import("Webp.zig");
 
-const Voronoi = @import("Voronoi.zig");
+const v = @import("voronoi.zig");
+const VkVoronoi = @import("VkVoronoi.zig");
 const ComputeContext = @import("ComputeContext.zig");
 
 pub fn main() !void {
@@ -25,7 +26,7 @@ pub fn main() !void {
     var paths: std.ArrayList([]const u8) = .{};
     defer paths.deinit(allocator);
 
-    var method: Voronoi.Method = .random;
+    var method: v.Method = .random;
     var methodStr: ?[]const u8 = null;
 
     while (args.next()) |arg| {
@@ -37,7 +38,7 @@ pub fn main() !void {
     }
 
     if (methodStr != null) {
-        if (std.meta.stringToEnum(Voronoi.Method, methodStr.?)) |m| {
+        if (std.meta.stringToEnum(v.Method, methodStr.?)) |m| {
             method = m;
         } else {
             std.debug.print("Error: invalid method=`{s}`\n", .{methodStr.?});
@@ -45,8 +46,10 @@ pub fn main() !void {
         }
     }
 
-    const ctx = try ComputeContext.init(allocator);
+    var ctx = try ComputeContext.init(allocator);
     defer ctx.deinit(allocator);
+    var vkv = VkVoronoi.init(&ctx);
+    vkv.allocate_image_memory(allocator);
 
     for (paths.items) |path| {
         const file = try std.fs.cwd().openFile(path, .{});
@@ -60,7 +63,7 @@ pub fn main() !void {
         std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{path, read_len / 1000});
         var image = Png.extract_pixels(allocator, raw_data);
 
-        try Voronoi.apply(allocator, &image, method);
+        try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, &image);
 
         allocator.free(image.pixels);

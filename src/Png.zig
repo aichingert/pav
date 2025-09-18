@@ -2,7 +2,6 @@ const std = @import("std");
 const z   = @cImport(
     @cInclude("zlib.h")
 );
-const Voronoi = @import("Voronoi.zig");
 
 const utils = @import("utils.zig");
 const read = utils.read;
