@@ -116,6 +116,8 @@ pub fn init(allocator: Allocator) !Self {
     var extensions: std.ArrayList([*:0]const u8) = .empty;
     try extensions.append(allocator, vk.extensions.ext_debug_utils.name);
 
+    const layers = [_][*:0]const u8{"VK_LAYER_KHRONOS_validation"};
+
     const instance_handle = try self.vkb.createInstance(&.{
         .p_application_info = &.{
             .p_application_name = "compute voronoi",
@@ -123,6 +125,8 @@ pub fn init(allocator: Allocator) !Self {
             .engine_version = @bitCast(vk.makeApiVersion(0, 0, 0, 0)),
             .api_version = @bitCast(vk.makeApiVersion(0, 1, 4, 0)),
         },
+        .enabled_layer_count = @intCast(layers.len),
+        .pp_enabled_layer_names = @ptrCast(&layers),
         .enabled_extension_count = @intCast(extensions.items.len),
         .pp_enabled_extension_names = extensions.items.ptr,
         .flags = .{ .enumerate_portability_bit_khr = true },
