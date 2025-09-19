@@ -15,11 +15,11 @@ fn write_number_with_end(comptime T: type, buffer: []u8, pos: *u64, number: T, e
     pos.* += 1;
 }
 
-pub fn write_image(allocator: Allocator, image: *Image) !void {
+pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void {
     // NOTE: allocating way too much at the moment
     var buffer: []u8 = try allocator.alloc(u8, 3 * 30 + image.*.pixels.len * 4);
 
-    const file = try std.fs.cwd().createFile("image.ppm", .{ .read = true });
+    const file = try std.fs.cwd().createFile(path, .{ .read = true });
     for (ppm_init, 0..) |c, i| {
         buffer[i] = c;
     }

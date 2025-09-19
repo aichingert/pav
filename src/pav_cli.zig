@@ -48,8 +48,8 @@ pub fn main() !void {
 
     var ctx = try ComputeContext.init(allocator);
     defer ctx.deinit(allocator);
-    const vkv = try VkVoronoi.init(&ctx);
-    _ = vkv;
+    var vkv = try VkVoronoi.init(&ctx);
+    defer vkv.deinit();
 
     for (paths.items) |path| {
         const file = try std.fs.cwd().openFile(path, .{});
@@ -60,12 +60,23 @@ pub fn main() !void {
         var reader = std.fs.File.Reader.init(file, raw_data);
         const read_len = try reader.read(raw_data);
 
-        std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{path, read_len / 1000});
+        const out_img = try mem.concat(allocator, u8, &[_][]const u8{std.fs.path.stem(path), ".ppm"});
+        var fre_out = false;
+        var out_pth = out_img;
+
+        if (std.fs.path.dirname(path)) |dir| {
+            fre_out = true;
+            out_pth = try std.fs.path.join(allocator, &[_][]const u8{dir, out_img});
+        }
+
+        std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{out_pth, read_len / 1000});
         var image = Png.extract_pixels(allocator, raw_data);
 
         try v.apply(allocator, &image, method);
-        try Ppm.write_image(allocator, &image);
+        try Ppm.write_image(allocator, out_pth, &image);
 
+        allocator.free(out_img);
+        if (fre_out) allocator.free(out_pth);
         allocator.free(image.pixels);
         allocator.free(raw_data);
     }

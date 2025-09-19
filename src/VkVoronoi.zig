@@ -212,3 +212,7 @@ fn copy_buffer(self: *Self, src: vk.Buffer, dst: vk.Buffer, size: vk.DeviceSize)
     try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
 }
 
+pub fn deinit(self: *Self) void {
+    _ = self;
+}
+
