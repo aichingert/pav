@@ -79,8 +79,6 @@ pub fn upload_image(self: *Self, img: *Image) !void {
 }
 
 pub fn compute(self: *Self, img: *Image) !void {
-    // TODO: set pixels in original
-    _ = img;
     try self.command_buffer.beginCommandBuffer(&.{});
 
     self.command_buffer.bindPipeline(.compute, self.pipeline);
@@ -96,6 +94,24 @@ pub fn compute(self: *Self, img: *Image) !void {
     };
     try self.ctx.dev.queueSubmit(self.ctx.compute_handle, 1, @ptrCast(&submit_info), .null_handle);
     try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
+
+    const usage = vk.BufferUsageFlags{ .transfer_dst_bit = true, .storage_buffer_bit = true };
+    const props = vk.MemoryPropertyFlags{ .host_visible_bit = true, .host_coherent_bit = true };
+    var staging_buffer: vk.Buffer = undefined;
+    var staging_buffer_mem: vk.DeviceMemory = undefined;
+    const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
+
+    try self.create_buffer(size, usage, props, &staging_buffer, &staging_buffer_mem);
+    try self.copy_buffer(self.ssbo, staging_buffer, size);
+
+    const data = try self.ctx.dev.mapMemory(staging_buffer_mem, 0, size, .{});
+    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+
+    @memcpy(img.*.pixels[0..], gpu_pixels);
+    self.ctx.dev.unmapMemory(staging_buffer_mem);
+
+    self.ctx.dev.destroyBuffer(staging_buffer, null);
+    self.ctx.dev.freeMemory(staging_buffer_mem, null);
 }
 
 fn create_command_structures(self: *Self) !void {
@@ -117,7 +133,7 @@ fn create_command_structures(self: *Self) !void {
 }
 
 fn create_ssbo_with_size_estimate(self: *Self) !void {
-    const usage = vk.BufferUsageFlags{ .transfer_dst_bit = true, .storage_buffer_bit = true };
+    const usage = vk.BufferUsageFlags{ .transfer_src_bit = true, .transfer_dst_bit = true, .storage_buffer_bit = true };
     const props = vk.MemoryPropertyFlags{ .device_local_bit = true };
 
     try self.create_buffer(self.cur_image_size, usage, props, &self.ssbo, &self.ssbo_mem);

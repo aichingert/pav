@@ -16,7 +16,7 @@ fn write_number_with_end(comptime T: type, buffer: []u8, pos: *u64, number: T, e
 
 pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void {
     // NOTE: allocating way too much at the moment
-    var buffer: []u8 = try allocator.alloc(u8, 3 * 30 + image.*.pixels.len * 4);
+    var buffer: []u8 = try allocator.alloc(u8, 3 * 30 + image.*.pixels.len * 20);
 
     const file = try std.fs.cwd().createFile(path, .{ .read = true });
     for (ppm_init, 0..) |c, i| {
@@ -29,7 +29,7 @@ pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void 
     try write_number_with_end(u32, buffer, &ppm_pos, image.*.height, ' ');
     try write_number_with_end(u32, buffer, &ppm_pos, 255, '\n');
 
-    for (image.*.pixels) |pixel| {
+    for (image.pixels) |pixel| {
         try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 16) & 0xFF, ' ');
         try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 8) & 0xFF, ' ');
         try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 0) & 0xFF, ' ');
@@ -38,6 +38,5 @@ pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void 
     try file.writeAll(buffer[0..ppm_pos]);
     file.close();
     allocator.free(buffer);
-
 }
 

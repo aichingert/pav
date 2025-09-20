@@ -75,7 +75,7 @@ pub fn main() !void {
         try vkv.upload_image(&image);
         try vkv.compute(&image);
 
-        try v.apply(allocator, &image, method);
+        //try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_pth, &image);
 
         allocator.free(out_img);
