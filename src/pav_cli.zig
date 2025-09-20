@@ -47,8 +47,8 @@ pub fn main() !void {
     }
 
     var ctx = try ComputeContext.init(allocator);
-    defer ctx.deinit(allocator);
     var vkv = try VkVoronoi.init(&ctx);
+    defer ctx.deinit(allocator);
     defer vkv.deinit();
 
     for (paths.items) |path| {
@@ -69,8 +69,11 @@ pub fn main() !void {
             out_pth = try std.fs.path.join(allocator, &[_][]const u8{dir, out_img});
         }
 
-        std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{out_pth, read_len / 1000});
+        std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{path, read_len / 1000});
         var image = Png.extract_pixels(allocator, raw_data);
+
+        try vkv.upload_image(&image);
+        try vkv.compute(&image);
 
         try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_pth, &image);

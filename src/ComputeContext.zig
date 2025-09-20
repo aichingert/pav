@@ -115,6 +115,7 @@ pub fn init(allocator: Allocator) !Self {
 
     var extensions: std.ArrayList([*:0]const u8) = .empty;
     try extensions.append(allocator, vk.extensions.ext_debug_utils.name);
+    try extensions.append(allocator, vk.extensions.khr_portability_enumeration.name);
 
     const layers = [_][*:0]const u8{"VK_LAYER_KHRONOS_validation"};
 
@@ -143,7 +144,6 @@ pub fn init(allocator: Allocator) !Self {
             .error_bit_ext = true,
         },
         .message_type = .{
-            .general_bit_ext = true,
             .validation_bit_ext = true,
             .performance_bit_ext = true,
         },
@@ -181,6 +181,7 @@ pub fn init(allocator: Allocator) !Self {
 
 pub fn deinit(self: *const Self, allocator: Allocator) void {
     self.dev.destroyDevice(null);
+
     self.instance.destroyDebugUtilsMessengerEXT(self.debug_messenger, null);
     self.instance.destroyInstance(null);
 

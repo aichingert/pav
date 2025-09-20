@@ -4,7 +4,6 @@ const Allocator = std.mem.Allocator;
 
 const utils = @import("utils.zig");
 const Image = utils.Image;
-const COLOR_CHANNELS = utils.COLOR_CHANNELS;
 
 const ppm_init: []const u8 = "P3\n";
 
@@ -30,9 +29,10 @@ pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void 
     try write_number_with_end(u32, buffer, &ppm_pos, image.*.height, ' ');
     try write_number_with_end(u32, buffer, &ppm_pos, 255, '\n');
 
-    assert(COLOR_CHANNELS == 3);
     for (image.*.pixels) |pixel| {
-        try write_number_with_end(u8, buffer, &ppm_pos, pixel, ' ');
+        try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 16) & 0xFF, ' ');
+        try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 8) & 0xFF, ' ');
+        try write_number_with_end(u32, buffer, &ppm_pos, (pixel >> 0) & 0xFF, ' ');
     }
 
     try file.writeAll(buffer[0..ppm_pos]);

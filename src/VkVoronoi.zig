@@ -1,18 +1,23 @@
 const std = @import("std");
+const mem = std.mem;
 const vk  = @import("vulkan");
 
-const Allocator = std.mem.Allocator;
+const Allocator = mem.Allocator;
 const assert = std.debug.assert;
 
+const Image = @import("utils.zig").Image;
 const ComputeContext = @import("ComputeContext.zig");
 
 const comp_spv align(@alignOf(u32)) = @embedFile("voronoi_comp").*;
 const descriptor_set_count = 1;
 
 ctx: *ComputeContext,
-command_pool: vk.CommandPool,
 
-image_size: u32,
+command_pool: vk.CommandPool,
+command_buffer: vk.CommandBufferProxy,
+
+cur_image_size: u32,
+max_image_size: u32,
 
 descriptor_set: vk.DescriptorSet,
 descriptor_pool: vk.DescriptorPool,
@@ -30,13 +35,67 @@ pub fn init(ctx: *ComputeContext) !Self {
     var self: Self = undefined;
     self.ctx = ctx;
 
-    self.image_size = 1920 * 1080 * 32;
+    self.cur_image_size = 1920 * 1080 * 32;
+    self.max_image_size = self.cur_image_size;
+
+    //const limits = self.ctx.instance.getPhysicalDeviceProperties(self.ctx.pdev);
+
     try self.create_command_structures();
     try self.create_ssbo_with_size_estimate();
     try self.create_descriptors();
     try self.create_compute_pipeline();
 
     return self;
+}
+
+pub fn upload_image(self: *Self, img: *Image) !void {
+    const image_size = img.width * img.height;
+
+    if (self.max_image_size < image_size) {
+        // TODO: realloc ssbo
+        //self.max_image_size = image_size;
+        assert(false);
+    }
+
+    self.cur_image_size = image_size;
+
+    const usage = vk.BufferUsageFlags{ .transfer_src_bit = true, .storage_buffer_bit = true };
+    const props = vk.MemoryPropertyFlags{ .host_visible_bit = true, .host_coherent_bit = true };
+    var staging_buffer: vk.Buffer = undefined;
+    var staging_buffer_mem: vk.DeviceMemory = undefined;
+
+    const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
+    std.debug.print("{any} {any}\n", .{size, img.width * img.height * 32});
+    try self.create_buffer(size, usage, props, &staging_buffer, &staging_buffer_mem);
+
+    const data = try self.ctx.dev.mapMemory(staging_buffer_mem, 0, size, .{});
+    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+    @memcpy(gpu_pixels, img.pixels[0..]);
+    self.ctx.dev.unmapMemory(staging_buffer_mem);
+
+    try self.copy_buffer(staging_buffer, self.ssbo, size);
+    self.ctx.dev.destroyBuffer(staging_buffer, null);
+    self.ctx.dev.freeMemory(staging_buffer_mem, null);
+}
+
+pub fn compute(self: *Self, img: *Image) !void {
+    // TODO: set pixels in original
+    _ = img;
+    try self.command_buffer.beginCommandBuffer(&.{});
+
+    self.command_buffer.bindPipeline(.compute, self.pipeline);
+    self.command_buffer.bindDescriptorSets(.compute, self.pipeline_layout, 0, 1, @ptrCast(&self.descriptor_set), 0, null);
+    self.command_buffer.dispatch(self.cur_image_size / 1024, 1, 1);
+
+    try self.command_buffer.endCommandBuffer();
+
+    const submit_info = vk.SubmitInfo{
+        .command_buffer_count = 1,
+        .p_command_buffers = @ptrCast(&self.command_buffer),
+        .p_wait_dst_stage_mask = undefined,
+    };
+    try self.ctx.dev.queueSubmit(self.ctx.compute_handle, 1, @ptrCast(&submit_info), .null_handle);
+    try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
 }
 
 fn create_command_structures(self: *Self) !void {
@@ -46,13 +105,22 @@ fn create_command_structures(self: *Self) !void {
     };
 
     self.command_pool = try self.ctx.dev.createCommandPool(&pool_info, null);
+
+    var cmd_buf_handle: vk.CommandBuffer = undefined;
+    const alloc_info = vk.CommandBufferAllocateInfo{
+        .command_pool = self.command_pool, 
+        .level = .primary, 
+        .command_buffer_count = 1,
+    };
+    try self.ctx.dev.allocateCommandBuffers(&alloc_info, @ptrCast(&cmd_buf_handle));
+    self.command_buffer = vk.CommandBufferProxy.init(cmd_buf_handle, self.ctx.dev.wrapper);
 }
 
 fn create_ssbo_with_size_estimate(self: *Self) !void {
     const usage = vk.BufferUsageFlags{ .transfer_dst_bit = true, .storage_buffer_bit = true };
     const props = vk.MemoryPropertyFlags{ .device_local_bit = true };
 
-    try self.create_buffer(self.image_size, usage, props, &self.ssbo, &self.ssbo_mem);
+    try self.create_buffer(self.cur_image_size, usage, props, &self.ssbo, &self.ssbo_mem);
 }
 
 fn create_descriptors(self: *Self) !void {
@@ -96,7 +164,7 @@ fn create_descriptors(self: *Self) !void {
         .{
             .buffer = self.ssbo,
             .offset = 0,
-            .range = self.image_size,
+            .range = self.cur_image_size,
         }
     };
     const texel_buffer_view = [_]vk.BufferView{};
@@ -122,6 +190,7 @@ fn create_compute_pipeline(self: *Self) !void {
     const shader = try self.ctx.dev.createShaderModule(
         &.{ .code_size = comp_spv.len, .p_code = @ptrCast(&comp_spv) }, null
     );
+    defer self.ctx.dev.destroyShaderModule(shader, null);
     const shader_stage_info = vk.PipelineShaderStageCreateInfo{
         .stage = .{ .compute_bit = true },
         .module = shader,
@@ -149,6 +218,20 @@ fn create_compute_pipeline(self: *Self) !void {
     assert(result == .success);
 }
 
+fn find_memory_type_index(
+    mem_props: vk.PhysicalDeviceMemoryProperties, 
+    memory_type_bits: u32, 
+    flags: vk.MemoryPropertyFlags
+) !u32 {
+    for (mem_props.memory_types[0..mem_props.memory_type_count], 0..) |mem_type, i| {
+        if (memory_type_bits & (@as(u32, 1) << @truncate(i)) != 0 and mem_type.property_flags.contains(flags)) {
+            return @truncate(i);
+        }
+    }
+
+    return error.NoSuitableMemoryType;
+}
+
 fn create_buffer(
     self: *Self,
     size: vk.DeviceSize, 
@@ -161,23 +244,12 @@ fn create_buffer(
         &.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null
     );
 
-    var mem_type: u32 = 0;
     const mem_reqs = self.ctx.dev.getBufferMemoryRequirements(buffer.*);
     const mem_props = self.ctx.instance.getPhysicalDeviceMemoryProperties(self.ctx.pdev);
-
-    while (mem_type < mem_props.memory_type_count) : (mem_type += 1) {
-        const m_type: u32 = @as(u32, 1) << @intCast(mem_type);
-
-        if ((mem_reqs.memory_type_bits & m_type) == m_type 
-            and 
-            mem_props.memory_types[mem_type].property_flags == props
-        ) {
-            break;
-        }
-    }
+    const mem_index = try find_memory_type_index(mem_props, mem_reqs.memory_type_bits, props);
 
     buffer_mem.* = try self.ctx.dev.allocateMemory(
-        &.{ .allocation_size = mem_reqs.size, .memory_type_index = mem_type }, null
+        &.{ .allocation_size = mem_reqs.size, .memory_type_index = mem_index }, null
     );
     try self.ctx.dev.bindBufferMemory(buffer.*, buffer_mem.*, 0);
 }
@@ -213,6 +285,12 @@ fn copy_buffer(self: *Self, src: vk.Buffer, dst: vk.Buffer, size: vk.DeviceSize)
 }
 
 pub fn deinit(self: *Self) void {
-    _ = self;
+    self.ctx.dev.destroyBuffer(self.ssbo, null);
+    self.ctx.dev.freeMemory(self.ssbo_mem, null);
+    self.ctx.dev.destroyDescriptorPool(self.descriptor_pool, null);
+    self.ctx.dev.destroyDescriptorSetLayout(self.descriptor_set_layout, null);
+    self.ctx.dev.destroyCommandPool(self.command_pool, null);
+    self.ctx.dev.destroyPipelineLayout(self.pipeline_layout, null);
+    self.ctx.dev.destroyPipeline(self.pipeline, null);
 }
 

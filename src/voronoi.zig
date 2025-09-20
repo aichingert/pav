@@ -4,7 +4,6 @@ const vk = @import("vulkan");
 
 const utils = @import("utils.zig");
 const Image = utils.Image;
-const COLOR_CHANNELS = utils.COLOR_CHANNELS;
 
 const assert = std.debug.assert;
 const mem = std.mem;
@@ -51,7 +50,7 @@ fn euclidean_distance(x: u32, y: u32, x1: u32, y1: u32) f64 {
 
 pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
     const total_points: f64 = @floatFromInt(image.*.width * image.*.height);
-    const points_to_place: u32 = @intFromFloat(total_points * 0.0005);
+    const points_to_place: u32 = @intFromFloat(total_points * 0.01);
     const points = try allocator.alloc(Point, points_to_place);
     defer allocator.free(points);
 
@@ -84,17 +83,9 @@ pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
                 cnt += 1;
             }
 
-            var dst_idx = i * image.*.width * COLOR_CHANNELS + j * COLOR_CHANNELS;
-            var src_idx = closest.y * image.*.width * COLOR_CHANNELS + closest.x * COLOR_CHANNELS;
-            var colors: u8 = 0;
-
-            while (colors < COLOR_CHANNELS) {
-                image.*.pixels[dst_idx] = image.*.pixels[src_idx];
-                colors += 1;
-                dst_idx += 1;
-                src_idx += 1;
-                cnt += 1;
-            }
+            const dst_idx = i * image.*.width + j;
+            const src_idx = closest.y * image.*.width + closest.x;
+            image.pixels[dst_idx] = image.pixels[src_idx];
             j += 1;
         }
 

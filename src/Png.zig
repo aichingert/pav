@@ -9,7 +9,6 @@ const read_slice = utils.read_slice;
 const Image = utils.Image;
 const RGB = utils.RGB;
 const RGBA = utils.RGBA;
-const COLOR_CHANNELS = utils.COLOR_CHANNELS;
 
 const mem = std.mem;
 const assert = std.debug.assert;
@@ -216,18 +215,7 @@ fn get_start_of_line(ihdr: *IHDR, line: u32) u64 {
     return @as(u64, line) * get_line_width(ihdr) + @as(u64, line);
 }
 
-fn set_pixel_in_buffer(pixel_buffer: []u8, color: u32, idx: *u64) void {
-    const r = color >> 16;
-    const g = (color >> 8) & 0xFF;
-    const b = (color >> 0) & 0xFF;
-
-    pixel_buffer[idx.* + 0] = @intCast(r);
-    pixel_buffer[idx.* + 1] = @intCast(g);
-    pixel_buffer[idx.* + 2] = @intCast(b);
-    idx.* += COLOR_CHANNELS;
-}
-
-fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer: []u8) void {
+fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer: []u32) void {
     const filter: u8 = get_filter_type(idat, ihdr, line.*);
 
     switch (filter) {
@@ -245,26 +233,26 @@ fn apply_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: *u32, pixel_buffer:
     line.* += 1;
 }
 
-fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+fn copy_scanline(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u32) void {
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width;
 
-    while (pos - beg < ihdr.*.width * bpp) {
+    while (pos - beg < ihdr.*.width * bpp) : (idx += 1) {
         const color = idat.get_color_value(ihdr, plte, &pos);
-        set_pixel_in_buffer(pixel_buffer, color, &idx);
+        pixel_buffer[idx] = color;
     }
 }
 
 // NOTE: there are two subtract filters (left and up)
-fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bool, pixel_buffer: []u8) void {
+fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bool, pixel_buffer: []u32) void {
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width; 
 
-    while (pos - beg < ihdr.*.width * bpp) {
+    while (pos - beg < ihdr.*.width * bpp) : (idx += 1) {
         var cur_pixel: u64 = 0;
 
         while (cur_pixel < bpp) {
@@ -287,17 +275,17 @@ fn subtract_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, is_left: bo
 
         pos -= bpp;
         const color = idat.get_color_value(ihdr, plte, &pos);
-        set_pixel_in_buffer(pixel_buffer, color, &idx);
+        pixel_buffer[idx] = color;
     }
 }
 
-fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u32) void {
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width;
 
-    while (pos - beg < ihdr.*.width * bpp) {
+    while (pos - beg < ihdr.*.width * bpp) : (idx += 1) {
         var cur_pixel: u64 = 0;
 
         while (cur_pixel < bpp) {
@@ -316,17 +304,17 @@ fn average_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer
 
         pos -= bpp;
         const color = idat.get_color_value(ihdr, plte, &pos);
-        set_pixel_in_buffer(pixel_buffer, color, &idx);
+        pixel_buffer[idx] = color;
     }
 }
 
-fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u8) void {
+fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: []u32) void {
     const beg = get_start_of_line(ihdr, line) + 1;
     const bpp = ihdr.get_bits_per_pixel();
     var pos = beg;
-    var idx: u64 = line * ihdr.*.width * COLOR_CHANNELS;
+    var idx: u64 = line * ihdr.*.width;
 
-    while (pos - beg < ihdr.*.width * bpp) {
+    while (pos - beg < ihdr.*.width * bpp) : (idx += 1) {
         var cur_pixel: u64 = 0;
 
         while (cur_pixel < bpp) {
@@ -359,7 +347,7 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
 
         pos -= bpp;
         const color = idat.get_color_value(ihdr, plte, &pos);
-        set_pixel_in_buffer(pixel_buffer, color, &idx);
+        pixel_buffer[idx] = color;
     }
 }
 
@@ -391,7 +379,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) Image {
         _ = crc;
     }
 
-    const pixel_buffer: []u8 = allocator.alloc(u8, ihdr.width * ihdr.height * utils.COLOR_CHANNELS) catch |err| {
+    const pixel_buffer: []u32 = allocator.alloc(u32, ihdr.width * ihdr.height) catch |err| {
         std.debug.print("{any}\n", .{err});
         std.process.exit(1);
     };
