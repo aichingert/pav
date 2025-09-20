@@ -49,15 +49,19 @@ pub fn init(ctx: *ComputeContext) !Self {
 }
 
 pub fn upload_image(self: *Self, img: *Image) !void {
-    const image_size = img.width * img.height;
+    const image_size = img.width * img.height * 32;
+    self.cur_image_size = image_size;
 
     if (self.max_image_size < image_size) {
-        // TODO: realloc ssbo
-        //self.max_image_size = image_size;
-        assert(false);
-    }
+        self.ctx.dev.destroyBuffer(self.ssbo, null);
+        self.ctx.dev.freeMemory(self.ssbo_mem, null);
+        self.ctx.dev.destroyDescriptorPool(self.descriptor_pool, null);
+        self.ctx.dev.destroyDescriptorSetLayout(self.descriptor_set_layout, null);
 
-    self.cur_image_size = image_size;
+        self.max_image_size = image_size;
+        try self.create_ssbo_with_size_estimate();
+        try self.create_descriptors();
+    }
 
     const usage = vk.BufferUsageFlags{ .transfer_src_bit = true, .storage_buffer_bit = true };
     const props = vk.MemoryPropertyFlags{ .host_visible_bit = true, .host_coherent_bit = true };
@@ -65,7 +69,6 @@ pub fn upload_image(self: *Self, img: *Image) !void {
     var staging_buffer_mem: vk.DeviceMemory = undefined;
 
     const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
-    std.debug.print("{any} {any}\n", .{size, img.width * img.height * 32});
     try self.create_buffer(size, usage, props, &staging_buffer, &staging_buffer_mem);
 
     const data = try self.ctx.dev.mapMemory(staging_buffer_mem, 0, size, .{});
@@ -83,7 +86,7 @@ pub fn compute(self: *Self, img: *Image) !void {
 
     self.command_buffer.bindPipeline(.compute, self.pipeline);
     self.command_buffer.bindDescriptorSets(.compute, self.pipeline_layout, 0, 1, @ptrCast(&self.descriptor_set), 0, null);
-    self.command_buffer.dispatch(self.cur_image_size / 1024, 1, 1);
+    self.command_buffer.dispatch(self.cur_image_size / 256, 1, 1);
 
     try self.command_buffer.endCommandBuffer();
 
