@@ -1,6 +1,10 @@
 pub const RGB: u8 = 3;
 pub const RGBA: u8 = 4;
 
+pub const Method = enum {
+    random,
+};
+
 pub const Image = struct {
     width: u32,
     height: u32,

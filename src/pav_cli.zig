@@ -7,6 +7,7 @@ const Ppm = @import("Ppm.zig");
 const Webp = @import("Webp.zig");
 
 const v = @import("voronoi.zig");
+const Method = @import("utils.zig").Method;
 const VkVoronoi = @import("VkVoronoi.zig");
 const ComputeContext = @import("ComputeContext.zig");
 
@@ -26,7 +27,7 @@ pub fn main() !void {
     var paths: std.ArrayList([]const u8) = .{};
     defer paths.deinit(allocator);
 
-    var method: v.Method = .random;
+    var method: Method = .random;
     var methodStr: ?[]const u8 = null;
 
     while (args.next()) |arg| {
@@ -38,7 +39,7 @@ pub fn main() !void {
     }
 
     if (methodStr != null) {
-        if (std.meta.stringToEnum(v.Method, methodStr.?)) |m| {
+        if (std.meta.stringToEnum(Method, methodStr.?)) |m| {
             method = m;
         } else {
             std.debug.print("Error: invalid method=`{s}`\n", .{methodStr.?});
@@ -74,7 +75,7 @@ pub fn main() !void {
 
         std.debug.print("start\n", .{});
         try vkv.upload_image(&image);
-        try vkv.compute(&image);
+        try vkv.compute(&image, method);
         std.debug.print("end\n", .{});
 
         //try v.apply(allocator, &image, method);

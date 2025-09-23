@@ -5,7 +5,9 @@ const vk  = @import("vulkan");
 const Allocator = mem.Allocator;
 const assert = std.debug.assert;
 
-const Image = @import("utils.zig").Image;
+const utils = @import("utils.zig");
+const Image = utils.Image;
+const Method = utils.Method;
 const ComputeContext = @import("ComputeContext.zig");
 
 const comp_spv align(@alignOf(u32)) = @embedFile("voronoi_comp").*;
@@ -37,8 +39,6 @@ pub fn init(ctx: *ComputeContext) !Self {
 
     self.cur_image_size = 1920 * 1080 * 32;
     self.max_image_size = self.cur_image_size;
-
-    //const limits = self.ctx.instance.getPhysicalDeviceProperties(self.ctx.pdev);
 
     try self.create_command_structures();
     try self.create_ssbo_with_size_estimate();
@@ -81,11 +81,39 @@ pub fn upload_image(self: *Self, img: *Image) !void {
     self.ctx.dev.freeMemory(staging_buffer_mem, null);
 }
 
-pub fn compute(self: *Self, img: *Image) !void {
+fn init_voronoi(self: *Self, img: *Image, method: Method) !u32 {
+    assert(method == .random);
+
+    const rndm = std.crypto.random;
+    const size = img.width * img.height;
+
+    _ = size;
+    _ = self;
+
+    const x1 = rndm.intRangeAtMost(u32, 0, img.width - 1);
+    const y1 = rndm.intRangeAtMost(u32, 0, img.height - 1);
+    const x2 = rndm.intRangeAtMost(u32, 0, img.width - 1);
+    const y2 = rndm.intRangeAtMost(u32, 0, img.height - 1);
+
+    var dis = @max(img.width - x1, x1);
+    dis = @max(dis, img.width - x2);
+    dis = @max(dis, x2);
+    dis = @max(dis, img.height - y1);
+    dis = @max(dis, y1);
+    dis = @max(dis, img.height - y2);
+    dis = @max(dis, y2);
+
+    img.pixels[y1 * img.width + x1] |= 1 << 25;
+    img.pixels[y2 * img.width + x2] |= 1 << 25;
+    return std.math.ceilPowerOfTwo(u32, dis / 2 + 1);
+}
+
+fn run_wave(self: *Self) !void {
     try self.command_buffer.beginCommandBuffer(&.{});
 
     self.command_buffer.bindPipeline(.compute, self.pipeline);
     self.command_buffer.bindDescriptorSets(.compute, self.pipeline_layout, 0, 1, @ptrCast(&self.descriptor_set), 0, null);
+
     self.command_buffer.dispatch(self.cur_image_size / 256, 1, 1);
 
     try self.command_buffer.endCommandBuffer();
@@ -97,24 +125,17 @@ pub fn compute(self: *Self, img: *Image) !void {
     };
     try self.ctx.dev.queueSubmit(self.ctx.compute_handle, 1, @ptrCast(&submit_info), .null_handle);
     try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
+}
 
-    const usage = vk.BufferUsageFlags{ .transfer_dst_bit = true, .storage_buffer_bit = true };
-    const props = vk.MemoryPropertyFlags{ .host_visible_bit = true, .host_coherent_bit = true };
-    var staging_buffer: vk.Buffer = undefined;
-    var staging_buffer_mem: vk.DeviceMemory = undefined;
-    const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
+// TODO: implement
+pub fn compute(self: *Self, img: *Image, method: Method) !void {
+    const steps = try self.init_voronoi(img, method);
 
-    try self.create_buffer(size, usage, props, &staging_buffer, &staging_buffer_mem);
-    try self.copy_buffer(self.ssbo, staging_buffer, size);
+    for (0..steps) |_|  {
+        try self.run_wave();
+    }
 
-    const data = try self.ctx.dev.mapMemory(staging_buffer_mem, 0, size, .{});
-    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
-
-    @memcpy(img.*.pixels[0..], gpu_pixels);
-    self.ctx.dev.unmapMemory(staging_buffer_mem);
-
-    self.ctx.dev.destroyBuffer(staging_buffer, null);
-    self.ctx.dev.freeMemory(staging_buffer_mem, null);
+    try self.get_buffer_data(img);
 }
 
 fn create_command_structures(self: *Self) !void {
@@ -301,6 +322,27 @@ fn copy_buffer(self: *Self, src: vk.Buffer, dst: vk.Buffer, size: vk.DeviceSize)
 
     try self.ctx.dev.queueSubmit(self.ctx.compute_handle, 1, @ptrCast(&submit_info), .null_handle);
     try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
+}
+
+fn get_buffer_data(self: *Self, img: *Image) !void {
+    const usage = vk.BufferUsageFlags{ .transfer_dst_bit = true, .storage_buffer_bit = true };
+    const props = vk.MemoryPropertyFlags{ .host_visible_bit = true, .host_coherent_bit = true };
+
+    var staging_buffer: vk.Buffer = undefined;
+    var staging_buffer_mem: vk.DeviceMemory = undefined;
+    const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
+
+    try self.create_buffer(size, usage, props, &staging_buffer, &staging_buffer_mem);
+    try self.copy_buffer(self.ssbo, staging_buffer, size);
+
+    const data = try self.ctx.dev.mapMemory(staging_buffer_mem, 0, size, .{});
+    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+
+    @memcpy(img.pixels[0..], gpu_pixels);
+    self.ctx.dev.unmapMemory(staging_buffer_mem);
+
+    self.ctx.dev.destroyBuffer(staging_buffer, null);
+    self.ctx.dev.freeMemory(staging_buffer_mem, null);
 }
 
 pub fn deinit(self: *Self) void {

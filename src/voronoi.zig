@@ -4,14 +4,11 @@ const vk = @import("vulkan");
 
 const utils = @import("utils.zig");
 const Image = utils.Image;
+const Method = utils.Method;
 
 const assert = std.debug.assert;
 const mem = std.mem;
 const Allocator = mem.Allocator;
-
-pub const Method = enum {
-    random,
-};
 
 const Point = struct {
     x: u32,
