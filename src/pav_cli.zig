@@ -74,7 +74,6 @@ pub fn main() !void {
         var image = Png.extract_pixels(allocator, raw_data);
 
         std.debug.print("start\n", .{});
-        try vkv.upload_image(&image);
         try vkv.compute(&image, method);
         std.debug.print("end\n", .{});
 
