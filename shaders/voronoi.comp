@@ -1,6 +1,6 @@
 #version 450
 
-layout(binding = 0) buffer ImageSSBOInOut {
+layout(std430, binding = 0) buffer ImageSSBOInOut {
     uint pixels[ ];
 };
 layout(binding = 1) buffer WaveSeedPointSSBOIn {
@@ -12,9 +12,10 @@ void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index >= pixels.length()) return;
 
-    uint red = uint(0.2126 * float((pixels[index] >> 16) & 0xFF));
-    uint blu = uint(0.7152 * float((pixels[index] >> 8) & 0xFF));
-    uint gre = uint(0.0722 * float((pixels[index] >> 0) & 0xFF));
+    uint red = uint(0.2126 * float((pixels[index] >> 16) & 255));
+    uint blu = uint(0.7152 * float((pixels[index] >> 8) & 255));
+    uint gre = uint(0.0722 * float((pixels[index] >> 0) & 255));
     uint gray = red << 16 | blu << 8 | gre;
+
     pixels[index] = gray;
 }

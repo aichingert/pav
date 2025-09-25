@@ -91,19 +91,17 @@ fn upload_image_data(self: *Self, img: *Image) !void {
         .host_coherent_bit = true 
     };
     const staging = try self.create_buffer(buf_size, usage, props);
-    const data = try self.ctx.dev.mapMemory(
-        staging.mem, 
-        0, 
-        buf_size, 
-        .{});
+    std.debug.print("{any} | {any}\n", .{buf_size, staging.size});
 
+    const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
     const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
     const copy_size = @min(img.pixels.len, buf_size);
 
-    @memcpy(gpu_pixels, img.pixels[0..copy_size]);
-    self.ctx.dev.unmapMemory(staging.mem);
+    @memcpy(gpu_pixels[0..copy_size], img.pixels[0..copy_size]);
 
+    self.ctx.dev.unmapMemory(staging.mem);
     try self.copy_buffer(staging, self.image_buffer);
+
     self.ctx.dev.destroyBuffer(staging.buf, null);
     self.ctx.dev.freeMemory(staging.mem, null);
 }
@@ -124,8 +122,9 @@ fn store_image_data(self: *Self, img: *Image) !void {
 
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
     const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+    const copy_size = @min(img.pixels.len, buf_size);
 
-    @memcpy(img.pixels[0..], gpu_pixels);
+    @memcpy(img.pixels[0..copy_size], gpu_pixels[0..copy_size]);
     self.ctx.dev.unmapMemory(staging.mem);
 
     self.ctx.dev.destroyBuffer(staging.buf, null);
@@ -136,8 +135,11 @@ fn run_wave(self: *Self, img: *Image) !void {
     const img_size = @as(u64, img.width) * @as(u64, img.height);
     const buf_size = self.image_buffer.size;
 
+    std.debug.print("{any} - {any} - {any}\n", .{img_size, img.pixels.len, buf_size});
+
     var i: u64 = 0;
     while (i < img_size) : (i += buf_size) {
+        std.debug.print("iter\n", .{});
         try self.upload_image_data(img);
 
         try self.command_buffer.beginCommandBuffer(&.{});
@@ -174,11 +176,13 @@ fn run_wave(self: *Self, img: *Image) !void {
 
 // TODO: implement
 pub fn compute(self: *Self, img: *Image, method: Method) !void {
-    const steps = try self.init_voronoi(img, method);
+    _ = method;
+    //const steps = try self.init_voronoi(img, method);
 
-    for (0..steps) |_|  {
-        try self.run_wave(img);
-    }
+    try self.run_wave(img);
+    //for (0..steps) |_|  {
+    //    try self.run_wave(img);
+    //}
 }
 
 fn create_command_structures(self: *Self) !void {
@@ -215,7 +219,12 @@ fn create_image_buffer(self: *Self) !void {
         .device_local_bit = true 
     };
 
-    const chunk_size: u32 = 1 << 24;
+    // TODO: figure out how to check
+    // the maximum size for the current 
+    // device and use this as a metric
+
+    // NOTE: this might not even be the error??
+    const chunk_size: u32 = 1 << 16;
     self.image_buffer = try self.create_buffer(
         chunk_size,
         usage, 
@@ -378,7 +387,7 @@ fn create_buffer(
     return VkBuffer{
         .buf = buf,
         .mem = buf_mem,
-        .size = size,
+        .size = mem_reqs.size,
     };
 }
 

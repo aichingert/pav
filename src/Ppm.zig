@@ -38,5 +38,6 @@ pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void 
     try file.writeAll(buffer[0..ppm_pos]);
     file.close();
     allocator.free(buffer);
+    std.debug.print("[INFO] written=`{s}` size=`{d}kb`\n", .{path, ppm_pos / 1000});
 }
 
