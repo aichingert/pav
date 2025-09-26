@@ -93,8 +93,6 @@ pub fn main() !void {
 
     var ctx = try ComputeContext.init(allocator);
     var vkv = try VkVoronoi.init(&ctx);
-    defer ctx.deinit(allocator);
-    defer vkv.deinit();
 
     for (0..in_paths.items.len) |i| {
         const file = try std.fs.cwd().openFile(in_paths.items[i], .{});
@@ -117,6 +115,9 @@ pub fn main() !void {
         allocator.free(raw_data);
         allocator.free(out_paths.items[i]);
     }
+
+    vkv.deinit();
+    ctx.deinit(allocator);
 }
 
 

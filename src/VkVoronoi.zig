@@ -81,7 +81,6 @@ fn init_voronoi(self: *Self, img: *Image, method: Method) !u32 {
 }
 
 fn upload_image_data(self: *Self, img: *Image) !void {
-    const buf_size = self.image_buffer.size;
     const usage = vk.BufferUsageFlags{ 
         .transfer_src_bit = true, 
         .storage_buffer_bit = true 
@@ -90,16 +89,15 @@ fn upload_image_data(self: *Self, img: *Image) !void {
         .host_visible_bit = true, 
         .host_coherent_bit = true 
     };
-    const staging = try self.create_buffer(buf_size, usage, props);
-    std.debug.print("{any} | {any}\n", .{buf_size, staging.size});
 
+    const buf_size = self.image_buffer.size;
+    const staging = try self.create_buffer(buf_size, usage, props);
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
-    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+    const gpu_pixels: [*]u32 = @ptrCast(@alignCast(data));
     const copy_size = @min(img.pixels.len, buf_size);
 
+    std.debug.print("{any} - {any}\n", .{copy_size, buf_size});
     @memcpy(gpu_pixels[0..copy_size], img.pixels[0..copy_size]);
-
-    self.ctx.dev.unmapMemory(staging.mem);
     try self.copy_buffer(staging, self.image_buffer);
 
     self.ctx.dev.destroyBuffer(staging.buf, null);
@@ -116,17 +114,15 @@ fn store_image_data(self: *Self, img: *Image) !void {
         .host_coherent_bit = true 
     };
 
-    const buf_size = self.image_buffer.size;
+    const buf_size = self.image_buffer.size; 
     const staging = try self.create_buffer(buf_size, usage, props);
     try self.copy_buffer(self.image_buffer, staging);
 
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
-    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
+    const gpu_pixels: [*]u32 = @ptrCast(@alignCast(data));
     const copy_size = @min(img.pixels.len, buf_size);
 
     @memcpy(img.pixels[0..copy_size], gpu_pixels[0..copy_size]);
-    self.ctx.dev.unmapMemory(staging.mem);
-
     self.ctx.dev.destroyBuffer(staging.buf, null);
     self.ctx.dev.freeMemory(staging.mem, null);
 }
@@ -224,7 +220,10 @@ fn create_image_buffer(self: *Self) !void {
     // device and use this as a metric
 
     // NOTE: this might not even be the error??
-    const chunk_size: u32 = 1 << 16;
+    // NOTE: if this is 1 << 15 it starts to crash
+    // without any reason at all I HATE ZIG THIS 
+    // LANGUAGE ARGHHH
+    const chunk_size: u64 = 1 << 14;
     self.image_buffer = try self.create_buffer(
         chunk_size,
         usage, 
@@ -387,7 +386,7 @@ fn create_buffer(
     return VkBuffer{
         .buf = buf,
         .mem = buf_mem,
-        .size = mem_reqs.size,
+        .size = size,
     };
 }
 
@@ -429,34 +428,7 @@ fn copy_buffer(self: *Self, src: VkBuffer, dst: VkBuffer) !void {
         @ptrCast(&submit_info), 
         .null_handle);
     try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
-}
-
-fn get_buffer_data(self: *Self, img: *Image) !void {
-    const usage = vk.BufferUsageFlags{ 
-        .transfer_dst_bit = true, 
-        .storage_buffer_bit = true 
-    };
-    const props = vk.MemoryPropertyFlags{ 
-        .host_visible_bit = true, 
-        .host_coherent_bit = true 
-    };
-
-    const size: vk.DeviceSize = @intCast(img.width * img.height * 32);
-    const staging = try self.create_buffer(size, usage, props);
-    try self.copy_buffer(self.image_buffer, staging);
-
-    const data = try self.ctx.dev.mapMemory(
-        staging.mem, 
-        0, 
-        size, 
-        .{});
-    const gpu_pixels: [*]u32 = @alignCast(@ptrCast(data));
-
-    @memcpy(img.pixels[0..], gpu_pixels);
-    self.ctx.dev.unmapMemory(staging.mem);
-
-    self.ctx.dev.destroyBuffer(staging.buf, null);
-    self.ctx.dev.freeMemory(staging.mem, null);
+    self.ctx.dev.freeCommandBuffers(self.command_pool, 1, @ptrCast(&cmdbuf_handle));
 }
 
 pub fn deinit(self: *Self) void {
