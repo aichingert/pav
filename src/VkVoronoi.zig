@@ -13,6 +13,14 @@ const ComputeContext = @import("ComputeContext.zig");
 const comp_spv align(@alignOf(u32)) = @embedFile("voronoi_comp").*;
 const descriptor_set_count = 1;
 
+// NOTE: this is used to not use the
+// entirety of the mapped buffer but
+// only up to a certain point since it
+// crashes the application at random places
+// if it uses the entire buffer
+// TODO: fix this
+const HACK_OFFSET: u64 = 15_000_000;
+
 const VkBuffer = struct {
     buf: vk.Buffer,
     mem: vk.DeviceMemory,
@@ -80,7 +88,7 @@ fn init_voronoi(self: *Self, img: *Image, method: Method) !u32 {
     return std.math.ceilPowerOfTwo(u32, dis / 2 + 1);
 }
 
-fn upload_image_data(self: *Self, img: *Image) !void {
+fn upload_image_data(self: *Self, img: *Image, offset: u64) !void {
     const usage = vk.BufferUsageFlags{ 
         .transfer_src_bit = true, 
         .storage_buffer_bit = true 
@@ -94,17 +102,16 @@ fn upload_image_data(self: *Self, img: *Image) !void {
     const staging = try self.create_buffer(buf_size, usage, props);
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
     const gpu_pixels: [*]u32 = @ptrCast(@alignCast(data));
-    const copy_size = @min(img.pixels.len, buf_size);
+    const copy_size = @min(img.pixels.len - offset, buf_size - HACK_OFFSET);
 
-    std.debug.print("{any} - {any}\n", .{copy_size, buf_size});
-    @memcpy(gpu_pixels[0..copy_size], img.pixels[0..copy_size]);
+    @memcpy(gpu_pixels[0..copy_size], img.pixels[offset..offset + copy_size]);
     try self.copy_buffer(staging, self.image_buffer);
 
     self.ctx.dev.destroyBuffer(staging.buf, null);
     self.ctx.dev.freeMemory(staging.mem, null);
 }
 
-fn store_image_data(self: *Self, img: *Image) !void {
+fn store_image_data(self: *Self, img: *Image, offset: u64) !void {
     const usage = vk.BufferUsageFlags{ 
         .transfer_dst_bit = true, 
         .storage_buffer_bit = true 
@@ -120,9 +127,9 @@ fn store_image_data(self: *Self, img: *Image) !void {
 
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
     const gpu_pixels: [*]u32 = @ptrCast(@alignCast(data));
-    const copy_size = @min(img.pixels.len, buf_size);
+    const copy_size = @min(img.pixels.len - offset, buf_size - HACK_OFFSET);
 
-    @memcpy(img.pixels[0..copy_size], gpu_pixels[0..copy_size]);
+    @memcpy(img.pixels[offset..offset + copy_size], gpu_pixels[0..copy_size]);
     self.ctx.dev.destroyBuffer(staging.buf, null);
     self.ctx.dev.freeMemory(staging.mem, null);
 }
@@ -131,13 +138,13 @@ fn run_wave(self: *Self, img: *Image) !void {
     const img_size = @as(u64, img.width) * @as(u64, img.height);
     const buf_size = self.image_buffer.size;
 
-    std.debug.print("{any} - {any} - {any}\n", .{img_size, img.pixels.len, buf_size});
+    var offset: u64 = 0;
+    const inc:  u64 = @min(
+        self.limits.max_compute_work_group_size[0] * 256,
+        buf_size - HACK_OFFSET);
 
-    var i: u64 = 0;
-    while (i < img_size) : (i += buf_size) {
-        std.debug.print("iter\n", .{});
-        try self.upload_image_data(img);
-
+    while (offset < img_size) : (offset += inc) {
+        try self.upload_image_data(img, offset);
         try self.command_buffer.beginCommandBuffer(&.{});
 
         self.command_buffer.bindPipeline(.compute, self.pipeline);
@@ -166,7 +173,7 @@ fn run_wave(self: *Self, img: *Image) !void {
             @ptrCast(&submit_info), 
             .null_handle);
         try self.ctx.dev.queueWaitIdle(self.ctx.compute_handle);
-        try self.store_image_data(img);
+        try self.store_image_data(img, offset);
     }
 }
 
@@ -223,7 +230,10 @@ fn create_image_buffer(self: *Self) !void {
     // NOTE: if this is 1 << 15 it starts to crash
     // without any reason at all I HATE ZIG THIS 
     // LANGUAGE ARGHHH
-    const chunk_size: u64 = 1 << 14;
+
+    const chunk_size: u64 = 1 << 24;
+    assert(chunk_size > 100_000 + HACK_OFFSET);
+
     self.image_buffer = try self.create_buffer(
         chunk_size,
         usage, 
