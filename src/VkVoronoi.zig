@@ -21,10 +21,25 @@ const descriptor_set_count = 1;
 // TODO: fix this
 const HACK_OFFSET: u64 = 15_000_000;
 
+const Vp = struct {
+    color: u32,
+    point: u32,
+};
+
+const PerImageData = struct {
+    p1: Vp,
+    p2: Vp,
+};
+
 const VkBuffer = struct {
     buf: vk.Buffer,
     mem: vk.DeviceMemory,
     size: u64,
+
+    fn destroy(self: *VkBuffer, dev: vk.DeviceProxy) void {
+        dev.destroyBuffer(self.buf, null);
+        dev.freeMemory(self.mem, null);
+    }
 };
 
 ctx: *ComputeContext,
@@ -42,6 +57,7 @@ pipeline: vk.Pipeline,
 pipeline_layout: vk.PipelineLayout,
 
 image_buffer: VkBuffer,
+per_image_data: VkBuffer,
 
 const Self = @This();
 
@@ -55,6 +71,7 @@ pub fn init(ctx: *ComputeContext) !Self {
 
     try self.create_command_structures();
     try self.create_image_buffer();
+    try self.create_per_image_data();
     try self.create_descriptors();
     try self.create_compute_pipeline();
 
@@ -99,7 +116,7 @@ fn upload_image_data(self: *Self, img: *Image, offset: u64) !void {
     };
 
     const buf_size = self.image_buffer.size;
-    const staging = try self.create_buffer(buf_size, usage, props);
+    var staging = try self.create_buffer(buf_size, usage, props);
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
     const gpu_pixels: [*]u32 = @ptrCast(@alignCast(data));
     const copy_size = @min(img.pixels.len - offset, buf_size - HACK_OFFSET);
@@ -107,8 +124,7 @@ fn upload_image_data(self: *Self, img: *Image, offset: u64) !void {
     @memcpy(gpu_pixels[0..copy_size], img.pixels[offset..offset + copy_size]);
     try self.copy_buffer(staging, self.image_buffer);
 
-    self.ctx.dev.destroyBuffer(staging.buf, null);
-    self.ctx.dev.freeMemory(staging.mem, null);
+    staging.destroy(self.ctx.dev);
 }
 
 fn store_image_data(self: *Self, img: *Image, offset: u64) !void {
@@ -122,7 +138,7 @@ fn store_image_data(self: *Self, img: *Image, offset: u64) !void {
     };
 
     const buf_size = self.image_buffer.size; 
-    const staging = try self.create_buffer(buf_size, usage, props);
+    var staging = try self.create_buffer(buf_size, usage, props);
     try self.copy_buffer(self.image_buffer, staging);
 
     const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
@@ -130,8 +146,7 @@ fn store_image_data(self: *Self, img: *Image, offset: u64) !void {
     const copy_size = @min(img.pixels.len - offset, buf_size - HACK_OFFSET);
 
     @memcpy(img.pixels[offset..offset + copy_size], gpu_pixels[0..copy_size]);
-    self.ctx.dev.destroyBuffer(staging.buf, null);
-    self.ctx.dev.freeMemory(staging.mem, null);
+    staging.destroy(self.ctx.dev);
 }
 
 fn run_wave(self: *Self, img: *Image) !void {
@@ -139,8 +154,10 @@ fn run_wave(self: *Self, img: *Image) !void {
     const buf_size = self.image_buffer.size;
 
     var offset: u64 = 0;
+    // NOTE: maybe implement this in a way so people 
+    // could optimize group size to use their hardware
     const inc:  u64 = @min(
-        self.limits.max_compute_work_group_size[0] * 256,
+        self.limits.max_compute_work_group_size[0] * 1024,
         buf_size - HACK_OFFSET);
 
     while (offset < img_size) : (offset += inc) {
@@ -222,6 +239,9 @@ fn create_image_buffer(self: *Self) !void {
         .device_local_bit = true 
     };
 
+
+    // TODO: look at the note on top :(
+    
     // TODO: figure out how to check
     // the maximum size for the current 
     // device and use this as a metric
@@ -240,10 +260,47 @@ fn create_image_buffer(self: *Self) !void {
         props);
 }
 
+fn create_per_image_data(self: *Self) !void {
+    const size: vk.DeviceSize = @sizeOf(PerImageData);
+    std.debug.print("pid size:{any}\n", .{size});
+    const usage = vk.BufferUsageFlags{
+        .uniform_buffer_bit = true,
+    };
+    const props = vk.MemoryPropertyFlags{
+        .host_visible_bit = true,
+        .host_coherent_bit = true,
+    };
+    self.per_image_data = try self.create_buffer(size, usage, props);
+
+    const a_gpu = try self.ctx.dev.mapMemory(
+        self.per_image_data.mem, 
+        0, 
+        size, 
+        .{});
+    var d_cpu = PerImageData{
+        .p1 = .{
+            .color = 0xFF0000,
+            .point = 0,
+        },
+        .p2 = .{
+            .color = 0x00FF00,
+            .point = 0,
+        },
+    };
+
+    std.mem.copyForwards(u8, @as([*]u8, @ptrCast(a_gpu))[0..@sizeOf(PerImageData)], std.mem.asBytes(&d_cpu));
+}
+
 fn create_descriptors(self: *Self) !void {
     const layout_bindings = [_]vk.DescriptorSetLayoutBinding{
         .{
             .binding = 0,
+            .descriptor_count = 1,
+            .descriptor_type = .uniform_buffer,
+            .stage_flags = .{ .compute_bit = true },
+        },
+        .{
+            .binding = 1,
             .descriptor_count = 1,
             .descriptor_type = .storage_buffer,
             .stage_flags = .{ .compute_bit = true },
@@ -255,9 +312,15 @@ fn create_descriptors(self: *Self) !void {
         .p_bindings = &layout_bindings,
     };
 
-    self.descriptor_set_layout = try self.ctx.dev.createDescriptorSetLayout(&layout_info, null);
+    self.descriptor_set_layout = try self.ctx.dev.createDescriptorSetLayout(
+        &layout_info, 
+        null);
 
     const pool_sizes = [_]vk.DescriptorPoolSize {
+        .{
+            .type = .uniform_buffer,
+            .descriptor_count = 1,
+        },
         .{
             .type = .storage_buffer,
             .descriptor_count = 1,
@@ -281,6 +344,13 @@ fn create_descriptors(self: *Self) !void {
         &set_alloc_info, 
         @ptrCast(&self.descriptor_set));
 
+    const ub_info = [_]vk.DescriptorBufferInfo {
+        .{
+            .buffer = self.per_image_data.buf,
+            .offset = 0,
+            .range  = self.per_image_data.size,
+        },
+    };
     const sb_info = [_]vk.DescriptorBufferInfo {
         .{
             .buffer = self.image_buffer.buf,
@@ -295,6 +365,16 @@ fn create_descriptors(self: *Self) !void {
         .{
             .dst_set = self.descriptor_set,
             .dst_binding = 0,
+            .dst_array_element = 0,
+            .descriptor_type = .uniform_buffer,
+            .descriptor_count = 1,
+            .p_buffer_info = @ptrCast(&ub_info),
+            .p_texel_buffer_view = @ptrCast(&texel_buffer_view),
+            .p_image_info = @ptrCast(&image_info),
+        },
+        .{
+            .dst_set = self.descriptor_set,
+            .dst_binding = 1,
             .dst_array_element = 0,
             .descriptor_type = .storage_buffer,
             .descriptor_count = 1,
@@ -442,8 +522,9 @@ fn copy_buffer(self: *Self, src: VkBuffer, dst: VkBuffer) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    self.ctx.dev.destroyBuffer(self.image_buffer.buf, null);
-    self.ctx.dev.freeMemory(self.image_buffer.mem, null);
+    self.image_buffer.destroy(self.ctx.dev);
+    self.per_image_data.destroy(self.ctx.dev);
+
     self.ctx.dev.destroyDescriptorPool(self.descriptor_pool, null);
     self.ctx.dev.destroyDescriptorSetLayout(self.descriptor_set_layout, null);
     self.ctx.dev.destroyCommandPool(self.command_pool, null);

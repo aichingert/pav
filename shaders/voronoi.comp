@@ -1,21 +1,35 @@
 #version 450
 
-layout(std430, binding = 0) buffer ImageSSBOInOut {
+struct Data {
+    uint color;
+    uint point;
+} Vp;
+
+layout(binding = 0) uniform PerImageData {
+    Data d1;
+    Data d2;
+} pid;
+
+layout(std430, binding = 1) buffer ImageSSBOInOut {
     uint pixels[ ];
 };
-layout(binding = 1) buffer WaveSeedPointSSBOIn {
+
+layout(binding = 2) buffer WaveSeedPointSSBOIn {
     uint seeds[ ];
 };
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
-    if (index >= pixels.length()) return;
+    uint color = 0x1000000;
 
-    uint red = uint(0.2126 * float((pixels[index] >> 16) & 255));
-    uint blu = uint(0.7152 * float((pixels[index] >> 8) & 255));
-    uint gre = uint(0.0722 * float((pixels[index] >> 0) & 255));
-    uint gray = red << 16 | blu << 8 | gre;
+    if (index >= pixels.length() || ((pixels[index] & 0x1000000) == 0x1000000)) return;
 
-    pixels[index] = gray;
+    if (index > pixels.length() / 2) {
+        color |= pid.d1.color;
+    } else {
+        color |= pid.d2.color;
+    }
+
+    pixels[index] = color;
 }
