@@ -21,14 +21,14 @@ layout(binding = 2) buffer WaveSeedPointSSBOIn {
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
-    uint color = 0x1000000;
+    if (index >= pixels.length()) return;
 
-    if (index >= pixels.length() || ((pixels[index] & 0x1000000) == 0x1000000)) return;
+    uint color = 0;
 
-    if (index > pixels.length() / 2) {
-        color |= pid.d1.color;
+    if (index > pid.d1.point) {
+        color = pid.d2.color;
     } else {
-        color |= pid.d2.color;
+        color = pid.d1.color;
     }
 
     pixels[index] = color;

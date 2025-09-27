@@ -21,12 +21,13 @@ const descriptor_set_count = 1;
 // TODO: fix this
 const HACK_OFFSET: u64 = 15_000_000;
 
-const Vp = struct {
+const Vp = extern struct {
     color: u32,
     point: u32,
+    padding: [2]u32,
 };
 
-const PerImageData = struct {
+const PerImageData = extern struct {
     p1: Vp,
     p2: Vp,
 };
@@ -277,18 +278,21 @@ fn create_per_image_data(self: *Self) !void {
         0, 
         size, 
         .{});
-    var d_cpu = PerImageData{
+    const data: *PerImageData = @ptrCast(@alignCast(a_gpu.?));
+    data.* = PerImageData{
         .p1 = .{
             .color = 0xFF0000,
-            .point = 0,
+            .point = 1120 * 747 / 2,
+            .padding = [2]u32{0,0},
         },
         .p2 = .{
-            .color = 0x00FF00,
+            .color = 0x0000FF,
             .point = 0,
+            .padding = [2]u32{0,0},
         },
     };
 
-    std.mem.copyForwards(u8, @as([*]u8, @ptrCast(a_gpu))[0..@sizeOf(PerImageData)], std.mem.asBytes(&d_cpu));
+    //std.mem.copyForwards(u8, @as([*]u8, @ptrCast(a_gpu))[0..@sizeOf(PerImageData)], std.mem.asBytes(&d_cpu));
 }
 
 fn create_descriptors(self: *Self) !void {
