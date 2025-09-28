@@ -106,9 +106,9 @@ pub fn main() !void {
         std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_paths.items[i], read_len / 1000});
 
         var image = Png.extract_pixels(allocator, raw_data);
-        try vkv.compute(&image, method);
+        //try vkv.compute(&image, method);
 
-        //try v.apply(allocator, &image, method);
+        try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_paths.items[i], &image);
 
         allocator.free(image.pixels);

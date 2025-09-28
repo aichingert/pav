@@ -2,7 +2,8 @@
 
 struct Data {
     uint color;
-    uint point;
+    uint x_pos;
+    uint y_pos;
 } Vp;
 
 layout(binding = 0) uniform PerImageData {
@@ -25,7 +26,7 @@ void main() {
 
     uint color = 0;
 
-    if (index > pid.d1.point) {
+    if (index > pid.d1.x_pos) {
         color = pid.d2.color;
     } else {
         color = pid.d1.color;

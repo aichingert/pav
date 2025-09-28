@@ -23,8 +23,9 @@ const HACK_OFFSET: u64 = 15_000_000;
 
 const Vp = extern struct {
     color: u32,
-    point: u32,
-    padding: [2]u32,
+    x_pos: u32,
+    y_pos: u32,
+    padding: u32,
 };
 
 const PerImageData = extern struct {
@@ -57,6 +58,7 @@ descriptor_set_layout: vk.DescriptorSetLayout,
 pipeline: vk.Pipeline,
 pipeline_layout: vk.PipelineLayout,
 
+seed_buffer: VkBuffer,
 image_buffer: VkBuffer,
 per_image_data: VkBuffer,
 
@@ -85,9 +87,6 @@ fn init_voronoi(self: *Self, img: *Image, method: Method) !u32 {
     const rndm = std.crypto.random;
     const size = img.width * img.height;
 
-    _ = size;
-    _ = self;
-
     const x1 = rndm.intRangeAtMost(u32, 0, img.width - 1);
     const y1 = rndm.intRangeAtMost(u32, 0, img.height - 1);
     const x2 = rndm.intRangeAtMost(u32, 0, img.width - 1);
@@ -103,6 +102,48 @@ fn init_voronoi(self: *Self, img: *Image, method: Method) !u32 {
 
     img.pixels[y1 * img.width + x1] |= 1 << 25;
     img.pixels[y2 * img.width + x2] |= 1 << 25;
+
+    const a_gpu = try self.ctx.dev.mapMemory(
+        self.per_image_data.mem, 
+        0, 
+        size, 
+        .{});
+    const dt: *PerImageData = @ptrCast(@alignCast(a_gpu.?));
+    dt.* = PerImageData{
+        .p1 = .{
+            .color = img.pixels[y1 * img.width + x1],
+            .x_pos = x1,
+            .y_pos = y1,
+            .padding = undefined,
+        },
+        .p2 = .{
+            .color = img.pixels[y2 * img.width + x2],
+            .x_pos = x2,
+            .y_pos = y2,
+            .padding = undefined,
+        },
+    };
+
+    const usage = vk.BufferUsageFlags{ 
+        .transfer_src_bit = true, 
+        .storage_buffer_bit = true 
+    };
+    const props = vk.MemoryPropertyFlags{ 
+        .host_visible_bit = true, 
+        .host_coherent_bit = true 
+    };
+
+    const buf_size = self.seed_buffer.size;
+    const staging = try self.create_buffer(buf_size, usage, props);
+    try self.copy_buffer(self.image_buffer, staging);
+
+    const data = try self.ctx.dev.mapMemory(staging.mem, 0, buf_size, .{});
+    const gpu: [*]u32 = @ptrCast(@alignCast(data));
+    @memset(gpu[0..buf_size], 0);
+
+    // img.pixels[y1 * img.width + x1] |= 1 << 25;
+    // img.pixels[y2 * img.width + x2] |= 1 << 25;
+
     return std.math.ceilPowerOfTwo(u32, dis / 2 + 1);
 }
 
@@ -161,6 +202,11 @@ fn run_wave(self: *Self, img: *Image) !void {
         self.limits.max_compute_work_group_size[0] * 1024,
         buf_size - HACK_OFFSET);
 
+    std.debug.print("{any} - {any}\n", .{
+        self.limits.max_compute_work_group_size[0] * 1024,
+        buf_size - HACK_OFFSET
+    });
+
     while (offset < img_size) : (offset += inc) {
         try self.upload_image_data(img, offset);
         try self.command_buffer.beginCommandBuffer(&.{});
@@ -197,13 +243,11 @@ fn run_wave(self: *Self, img: *Image) !void {
 
 // TODO: implement
 pub fn compute(self: *Self, img: *Image, method: Method) !void {
-    _ = method;
-    //const steps = try self.init_voronoi(img, method);
+    const steps = try self.init_voronoi(img, method);
 
-    try self.run_wave(img);
-    //for (0..steps) |_|  {
-    //    try self.run_wave(img);
-    //}
+    for (0..steps) |_|  {
+        try self.run_wave(img);
+    }
 }
 
 fn create_command_structures(self: *Self) !void {
@@ -259,6 +303,11 @@ fn create_image_buffer(self: *Self) !void {
         chunk_size,
         usage, 
         props);
+    self.seed_buffer = try self.create_buffer(
+        chunk_size,
+        usage,
+        props,
+    );
 }
 
 fn create_per_image_data(self: *Self) !void {
@@ -271,27 +320,7 @@ fn create_per_image_data(self: *Self) !void {
         .host_visible_bit = true,
         .host_coherent_bit = true,
     };
-    self.per_image_data = try self.create_buffer(size, usage, props);
-
-    const a_gpu = try self.ctx.dev.mapMemory(
-        self.per_image_data.mem, 
-        0, 
-        size, 
-        .{});
-    const data: *PerImageData = @ptrCast(@alignCast(a_gpu.?));
-    data.* = PerImageData{
-        .p1 = .{
-            .color = 0xFF0000,
-            .point = 1120 * 747 / 2,
-            .padding = [2]u32{0,0},
-        },
-        .p2 = .{
-            .color = 0x0000FF,
-            .point = 0,
-            .padding = [2]u32{0,0},
-        },
-    };
-
+    self.per_image_data = try self.create_buffer(size, usage, props); 
     //std.mem.copyForwards(u8, @as([*]u8, @ptrCast(a_gpu))[0..@sizeOf(PerImageData)], std.mem.asBytes(&d_cpu));
 }
 
@@ -526,6 +555,7 @@ fn copy_buffer(self: *Self, src: VkBuffer, dst: VkBuffer) !void {
 }
 
 pub fn deinit(self: *Self) void {
+    self.seed_buffer.destroy(self.ctx.dev);
     self.image_buffer.destroy(self.ctx.dev);
     self.per_image_data.destroy(self.ctx.dev);
 
