@@ -8,8 +8,6 @@ const Webp = @import("Webp.zig");
 
 const v = @import("voronoi.zig");
 const Method = @import("utils.zig").Method;
-const VkVoronoi = @import("VkVoronoi.zig");
-const ComputeContext = @import("ComputeContext.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -91,9 +89,6 @@ pub fn main() !void {
         }
     }
 
-    var ctx = try ComputeContext.init(allocator);
-    var vkv = try VkVoronoi.init(&ctx);
-
     for (0..in_paths.items.len) |i| {
         const file = try std.fs.cwd().openFile(in_paths.items[i], .{});
         defer file.close();
@@ -106,7 +101,6 @@ pub fn main() !void {
         std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_paths.items[i], read_len / 1000});
 
         var image = Png.extract_pixels(allocator, raw_data);
-        //try vkv.compute(&image, method);
 
         try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_paths.items[i], &image);
@@ -115,9 +109,5 @@ pub fn main() !void {
         allocator.free(raw_data);
         allocator.free(out_paths.items[i]);
     }
-
-    vkv.deinit();
-    ctx.deinit(allocator);
 }
-
 

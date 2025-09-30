@@ -74,26 +74,7 @@ pub fn build(b: *std.Build) void {
             "zlib.h",
         },
     });
-
-    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
-    const vulkan = b.dependency("vulkan_zig", .{
-        .registry = registry,
-    }).module("vulkan-zig");
-
-    const comp_cmd = b.addSystemCommand(&.{
-        "glslc",
-        "--target-env=vulkan1.4",
-        "-o"
-    });
-    const comp_spv = comp_cmd.addOutputFileArg("comp.spv");
-    comp_cmd.addFileArg(b.path("shaders/voronoi.comp"));
-
-    exe.root_module.addAnonymousImport("voronoi_comp", .{
-        .root_source_file = comp_spv,
-    });
-    exe.root_module.addImport("vulkan", vulkan);
     exe.linkLibrary(zlib);
-    exe.linkSystemLibrary("vulkan");
     b.installArtifact(exe);
     
     const run_step = b.step("run", "run it");

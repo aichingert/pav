@@ -8,14 +8,6 @@
             .url = "https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz",
             .hash = "N-V-__8AAB0eQwD-0MdOEBmz7intriBReIsIDNlukNVoNu6o",
         },
-        .vulkan_zig = .{
-            .url = "git+https://github.com/Snektron/vulkan-zig.git#f879074293f0e2f718c93fd19cc0a96260a3aa52",
-            .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",
-        },
-        .vulkan_headers = .{
-            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.3.285.tar.gz",
-            .hash = "1220afc8e6bb47f2b8a1eebed3a696e1e7d65f16c80b01f226e3a0c6c78f00a28ef3",
-        },
     },
     .paths = .{
         "build.zig",
