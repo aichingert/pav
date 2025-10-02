@@ -7,7 +7,10 @@ var importObject = {
 WebAssembly.instantiateStreaming(fetch("pav.wasm"), importObject).then((result) => {
     console.log(result.instance.exports);
     console.log(result.instance.exports.add(1, 2));
-    //result.instance.exports..extract_pixels_from_png("hello.png");
+
+    const name = new Uint8Array([104, 101, 108, 108, 111, 46, 112, 110, 103]);
+
+    console.log(result.instance.exports.parse_image(name.byteOffset, name.byteOffset));
 });
 
 window.onload = async () => {
