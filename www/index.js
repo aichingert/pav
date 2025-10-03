@@ -1,19 +1,36 @@
-var importObject = {
-    env: {
-        console_log: (arg) => console.log(arg),
-    },
-};
-
-WebAssembly.instantiateStreaming(fetch("pav.wasm"), importObject).then((result) => {
-    console.log(result.instance.exports);
-    console.log(result.instance.exports.add(1, 2));
-
-    const name = new Uint8Array([104, 101, 108, 108, 111, 46, 112, 110, 103]);
-
-    console.log(result.instance.exports.parse_image(name.byteOffset, name.byteOffset));
+const memory = new WebAssembly.Memory({
+    initial: 10,
+    maximum: 100,
 });
 
+const console_log = (ptr, len) => {
+    const msg = new TextDecoder().decode(
+        memory.buffer.slice(ptr, ptr + len),
+    );
+    console.log(msg);
+};
+
 window.onload = async () => {
+    const wasm = await WebAssembly.instantiateStreaming(
+        fetch("pav.wasm"), 
+        {
+            env: {
+                memory,
+                console_log,
+            },
+        },
+    );
+    const { memory, exports } = wasm.instance;
+    console.log(exports);
+    exports.add(1, 2);
+
+
+    const name = new Uint8Array(memory.buffer);
+    const { written: input_len } = new TextEncoder.encodeInto("hello.png", name);
+
+    console.log(name.byteOffset);
+    exports.parse_image(name.byteOffset, input_len, name.byteOffset);
+
     const upload_picture = document.getElementById("picture");
 
     upload_picture.addEventListener("change", (event) => {

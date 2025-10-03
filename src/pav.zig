@@ -7,11 +7,16 @@
 // wasm idk - maybe i can 
 // we will see
 
-extern fn console_log(a: [*]u8) void;
+const std = @import("std");
+const wasm_allocator = std.heap.wasm_allocator;
 
-export fn parse_image(name: [*]u8, raw: [*]u8) u8 {
+
+extern fn console_log(buf: usize, len: usize) void;
+
+export fn parse_image(name: [*]u8, name_len: usize, raw: [*]u8) void {
     _ = raw;
-    return name[0];
+
+    console_log(@intFromPtr(name), name_len);
 }
 
 export fn add(a: u32, b: u32) u32 {
