@@ -1,35 +1,27 @@
-const memory = new WebAssembly.Memory({
-    initial: 10,
-    maximum: 100,
-});
-
-const console_log = (ptr, len) => {
-    const msg = new TextDecoder().decode(
-        memory.buffer.slice(ptr, ptr + len),
-    );
-    console.log(msg);
-};
-
 window.onload = async () => {
     const wasm = await WebAssembly.instantiateStreaming(
         fetch("pav.wasm"), 
         {
             env: {
-                memory,
-                console_log,
+                debug_log: (ptr, len) => {
+                    const bytes = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, len);
+                    const strvl = new TextDecoder().decode(bytes);
+                    console.log(strvl);
+                },
             },
         },
     );
-    const { memory, exports } = wasm.instance;
-    console.log(exports);
-    exports.add(1, 2);
 
+    //let name = "hello.png";
+    //let encoder = new TextEncoder();
+    //let bytes = encoder.encode(name);
+    //let addr  = wasm.instance.exports.alloc(bytes.byteLength);
+    //let dest  = new Uint8Array(wasm.instance.exports.memory.buffer, addr, bytes.byteLength);
+    //encoder.encodeInto(name, dest);
 
-    const name = new Uint8Array(memory.buffer);
-    const { written: input_len } = new TextEncoder.encodeInto("hello.png", name);
-
-    console.log(name.byteOffset);
-    exports.parse_image(name.byteOffset, input_len, name.byteOffset);
+    //let result = wasm.instance.exports.parse_image(addr, bytes.byteLength, addr);
+    //console.log(wasm.instance.exports, result);
+    //wasm.instance.exports.free(addr, bytes.byteLength);
 
     const upload_picture = document.getElementById("picture");
 
@@ -40,7 +32,26 @@ window.onload = async () => {
 
         const reader = new FileReader();
         reader.onload = () => {
-            console.log(reader.result);
+            const tenc = new TextEncoder();
+            const tdec = new TextDecoder();
+
+            const image_path = tenc.encode(event.target.files[0].name);
+            const image_data = reader.result;
+
+            const path_addr = wasm.instance.exports.alloc(image_path.byteLength);
+            const data_addr = wasm.instance.exports.alloc(image_data.byteLength);
+
+            const path_dest = new Uint8Array(wasm.instance.exports.memory.buffer, path_addr, image_path.byteLength);
+            const data_dest = new Uint8Array(wasm.instance.exports.memory.buffer, data_addr, image_data.byteLength);
+
+            tenc.encodeInto(event.target.files[0].name, path_dest);
+            tenc.encodeInto(tdec.decode(image_data), data_dest);
+
+            let result = wasm.instance.exports.parse_image(
+                path_addr, 
+                image_path.byteLength, 
+                data_addr, 
+                image_data.byteLength);
         };
         reader.readAsArrayBuffer(event.target.files[0]);
     });
@@ -56,7 +67,6 @@ window.onload = async () => {
         event.stopPropagation();
         event.preventDefault();
         const fileList = event.dataTransfer.files;
-        console.log(fileList);
     });
 
     drop_area.addEventListener("click", (event) => {

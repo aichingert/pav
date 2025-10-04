@@ -1,14 +1,20 @@
 pub const RGB: u8 = 3;
 pub const RGBA: u8 = 4;
 
-pub const Method = enum {
-    random,
+pub const ImageType = enum {
+    png,
+    jpg,
+    webp,
 };
 
 pub const Image = struct {
     width: u32,
     height: u32,
     pixels: []u32,
+};
+
+pub const Method = enum {
+    random,
 };
 
 // TODO: a compiler macro should do this but I can't get them to work
