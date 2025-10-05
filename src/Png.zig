@@ -154,7 +154,6 @@ pub const IDAT = struct {
 
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
         _ = allocator;
-        _ = length;
 
         const cmf = read(u8, raw_png, pos);
         const flg = read(u8, raw_png, pos);
@@ -165,8 +164,8 @@ pub const IDAT = struct {
         // NOTE: RFC - 1950 "CM = 8 denotes the "deflate" 
         // compression method ... used by gzip and PNG"
         assert(compression_method == 8 and compression_info < 8);
-        const window_size: u32 = @as(u32, 1) << @intCast(compression_info + 8);
-        _ = window_size;
+        const window_size = @as(u32, 1) << @intCast(compression_info + 8);
+        _   = window_size;
 
         const f_dict  = (flg >> 5) & 1;
         const f_level = (flg >> 6) & 3;
@@ -176,6 +175,16 @@ pub const IDAT = struct {
         // TODO: support preset dictionarys
         assert(f_dict == 0 and (@as(u32, cmf) * 256 + flg) % 31 == 0);
 
+        // TODO: figure the infalte more out from there
+        const block = read(u8, raw_png, pos);
+        std.debug.print("{b}\n", .{block});
+
+        const len = read(u16, raw_png, pos);
+        const n_len = read(u16, raw_png, pos);
+
+        _ = length;
+        std.debug.print("LEN: {any} {any} | {any}\n", .{flg, len, n_len});
+        assert(len == ~n_len);
 
 
         return IDAT {
@@ -348,7 +357,6 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
             idat = IDAT.read_chunk(allocator, raw_png, &pos, length);
-            break;
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
             plte = PLTE.read_chunk(raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_iend, chunk_type)) {
@@ -361,6 +369,9 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
         _ = crc;
     }
 
+    if (idat.size < ihdr.width * ihdr.height) {
+        return ParseImageError.InvalidImage;
+    }
     const pixel_buffer: []u32 = try allocator.alloc(u32, ihdr.width * ihdr.height);
 
     var line: u32 = 0;
