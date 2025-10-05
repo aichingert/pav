@@ -7,7 +7,9 @@ const Ppm = @import("Ppm.zig");
 const Webp = @import("Webp.zig");
 
 const v = @import("voronoi.zig");
-const Method = @import("utils.zig").Method;
+const utils = @import("utils.zig");
+const Method = utils.Method;
+const Image = utils.Image;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -100,7 +102,7 @@ pub fn main() !void {
 
         std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_paths.items[i], read_len / 1000});
 
-        var image = Png.extract_pixels(allocator, raw_data);
+        var image = try Png.extract_pixels(allocator, raw_data);
 
         try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_paths.items[i], &image);

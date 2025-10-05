@@ -7,17 +7,21 @@ pub const ImageType = enum {
     webp,
 };
 
+pub const Method = enum {
+    random,
+};
+
 pub const Image = struct {
     width: u32,
     height: u32,
     pixels: []u32,
 };
 
-pub const Method = enum {
-    random,
+pub const ParseImageError = error {
+    NotSupported,
+    InvalidImage,
 };
 
-// TODO: a compiler macro should do this but I can't get them to work
 pub fn read(comptime T: type, slice: []const u8, pos: *u32) T {
     const len: T = @bitSizeOf(T) / 8;
     const byt: T = 8;
@@ -29,7 +33,6 @@ pub fn read(comptime T: type, slice: []const u8, pos: *u32) T {
         i += 1;
     }
 
-    //const val = mem.nativeTo(u32, mem.readPackedIntNative(T, raw_png, pos.*), .little);
     pos.* += len;
     return value;
 }

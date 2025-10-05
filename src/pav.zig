@@ -9,11 +9,13 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const wasm_allocator = std.heap.wasm_allocator;
 
 const utils = @import("utils.zig");
 const ImageType = utils.ImageType;
 
-const wasm_allocator = std.heap.wasm_allocator;
+const Png = @import("Png.zig");
+
 
 pub extern fn debug_log(ptr: [*]u8, len: usize) void;
 
@@ -41,11 +43,14 @@ export fn parse_image(
         return 1;
     };
 
-    const raw_data: []u8 = raw[0..raw_len];
-    _ = raw_data;
+    const raw_data: []const u8 = raw[0..raw_len];
 
     switch (ext) {
         .png => {
+            const img = Png.extract_pixels(wasm_allocator, raw_data) catch {
+                return 2;
+            };
+            _ = img;
         },
         .jpg => {},
         .webp => {},
