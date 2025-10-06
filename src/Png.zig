@@ -18,6 +18,12 @@ const png_plte  = [_]u8{'P', 'L', 'T', 'E'};
 const png_idat  = [_]u8{'I', 'D', 'A', 'T'};
 const png_iend  = [_]u8{'I', 'E', 'N', 'D'};
 
+const zlib_maxbits: u32 = 15;
+const zlib_maxlcodes: u32 = 15;
+const zlib_maxdcodes: u32 = 286;
+const zlib_maxcodes: u32 = (zlib_maxlcodes + zlib_maxdcodes);
+const zlib_fixlcodes: u32 = 288;
+
 pub const IHDR = struct {
     width: u32,
     height: u32,
@@ -113,6 +119,11 @@ pub const IDAT = struct {
     data: []u8,
     size: usize,
 
+    const Huffman = struct {
+        count: []u16,
+        symbl: []u16,
+    };
+
     fn get_color_value(self: *IDAT, ihdr: *IHDR, plte: *PLTE, pos: *usize) !u32 {
         switch (ihdr.*.color_type) {
             0, 4 => assert(false),
@@ -152,6 +163,92 @@ pub const IDAT = struct {
         return 0;
     }
 
+    fn read_bits(bitbuf: *u32, bitcnt: *u32, raw_png: []const u8, pos: *u32, need: u32) u32 {
+        // TODO: len checks
+
+        var val = bitbuf.*;
+
+        while (bitbuf.* < need) {
+
+            val |= @as(u32, raw_png[@intCast(pos.*)]) << @intCast(bitcnt.*);
+            bitcnt.* += 8;
+        }
+
+        bitbuf.* = val >> @intCast(need);
+        bitcnt.* -= need;
+        return val & ((@as(u32, 1) << @intCast(need)) - 1);
+    }
+
+    fn construct(hs: *Huffman, length: []u16, n: u32) u32 {
+        for (0..zlib_maxbits)  |i| {
+            hs.count[i] = 0;
+        }
+        for (0..n) |i| {
+            hs.count[length[i]] += 1;
+        }
+
+        // TODO: error if h.count[0] == n
+
+        var left: u32 = 0;
+        for (1..zlib_maxbits) |i| {
+            left = left << 1;
+            left -= hs.count[i];
+
+            // TODO: error if left less than 0
+        }
+
+
+        var offs: [zlib_maxbits]u16 = undefined;
+        offs[1] = 0;
+
+        for (1..zlib_maxbits) |i| {
+            offs[i + 1] = offs[i] + hs.count[i];
+        }
+
+        for (0..n) |i| {
+            if (length[i] != 0) {
+                offs[length[i]] += 1;
+                hs.symbl[offs[length[i]]] = @intCast(i);
+            }
+        }
+
+        return left;
+    }
+
+    fn dynamic(bitbuf: *u32, bitcnt: *u32, raw_png: []const u8, pos: *u32) u32 {
+        const nlen = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 5) + 257;
+        const ndis = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 5) + 1;
+        const ncod = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 4) + 4;
+
+        var lengths: [zlib_maxcodes]u16 = undefined;
+        // TODO: fix undefined
+        var lencode = Huffman{
+            .count = undefined,
+            .symbl = undefined,
+        };
+        var discode = Huffman{
+            .count = undefined,
+            .symbl = undefined,
+        };
+        const order = [_]u16{16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+
+        for (0..ncod) |i| {
+            lengths[order[i]] = @intCast(IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 3));
+        }
+        for (ncod..19) |i| {
+            lengths[order[i]] = 0;
+        }
+
+        var err = construct(&lencode, &lengths, 19);
+        err = 1;
+
+        _ = nlen;
+        _ = ndis;
+        discode.count[0] = 0;
+
+        return 0;
+    }
+
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
         _ = allocator;
 
@@ -176,16 +273,25 @@ pub const IDAT = struct {
         assert(f_dict == 0 and (@as(u32, cmf) * 256 + flg) % 31 == 0);
 
         // TODO: figure the infalte more out from there
-        const block = read(u8, raw_png, pos);
-        std.debug.print("{b}\n", .{block});
-
-        const len = read(u16, raw_png, pos);
-        const n_len = read(u16, raw_png, pos);
 
         _ = length;
-        std.debug.print("LEN: {any} {any} | {any}\n", .{flg, len, n_len});
-        assert(len == ~n_len);
 
+        var bitcnt: u32 = 0;
+        var bitbuf: u32 = 0;
+        
+        while (true) {
+            const blast = IDAT.read_bits(&bitbuf, &bitcnt, raw_png, pos, 1);
+            const ctype = IDAT.read_bits(&bitbuf, &bitcnt, raw_png, pos, 2);
+
+            if (ctype == 2) {
+                var res = dynamic(&bitbuf, &bitcnt, raw_png, pos);
+                res = 0;
+            }
+
+            if (blast == 1) {
+                break;
+            }
+        }
 
         return IDAT {
             .size = 0,
