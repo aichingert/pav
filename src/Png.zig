@@ -168,8 +168,7 @@ pub const IDAT = struct {
 
         var val = bitbuf.*;
 
-        while (bitbuf.* < need) {
-
+        while (bitcnt.* < need) {
             val |= @as(u32, raw_png[@intCast(pos.*)]) << @intCast(bitcnt.*);
             bitcnt.* += 8;
         }
@@ -179,58 +178,91 @@ pub const IDAT = struct {
         return val & ((@as(u32, 1) << @intCast(need)) - 1);
     }
 
-    fn construct(hs: *Huffman, length: []u16, n: u32) u32 {
-        for (0..zlib_maxbits)  |i| {
-            hs.count[i] = 0;
+    fn construct(h: *Huffman, length: []u16, n: u32) u32 {
+        for (0..zlib_maxbits + 1)  |i| {
+            h.count[i] = 0;
         }
         for (0..n) |i| {
-            hs.count[length[i]] += 1;
+            h.count[length[i]] += 1;
         }
 
-        // TODO: error if h.count[0] == n
+        if (h.count[0] == n) {
+            return 0;
+        }
 
-        var left: u32 = 0;
-        for (1..zlib_maxbits) |i| {
+        var left: i32 = 1;
+        for (1..zlib_maxbits + 1) |i| {
             left = left << 1;
-            left -= hs.count[i];
+            left -= @intCast(h.count[i]);
 
-            // TODO: error if left less than 0
+            assert(left >= 0);
         }
 
-
-        var offs: [zlib_maxbits]u16 = undefined;
+        var offs: [zlib_maxbits + 1]u16 = undefined;
         offs[1] = 0;
 
         for (1..zlib_maxbits) |i| {
-            offs[i + 1] = offs[i] + hs.count[i];
+            offs[i + 1] = offs[i] + h.count[i];
         }
 
         for (0..n) |i| {
             if (length[i] != 0) {
+                h.symbl[offs[length[i]]] = @intCast(i);
                 offs[length[i]] += 1;
-                hs.symbl[offs[length[i]]] = @intCast(i);
             }
         }
 
-        return left;
+        std.debug.print("{any}\n", .{left});
+        return @intCast(left);
+    }
+
+    fn decode(bitbuf: *u32, bitcnt: *u32, raw_png: []const u8, pos: *u32, h: *Huffman) u32 {
+        var code: i32 = 0;
+        var first: i32 = 0;
+        var index: i32 = 0;
+
+        for (1..zlib_maxbits + 1) |i| {
+            code |= @intCast(IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 1));
+            const count = @as(i32, h.count[i]);
+
+            if (code - count > first) {
+                return @as(u32, h.symbl[@intCast(index + (code - first))]);
+            }
+
+            index += count;
+            first += count;
+            first = first << 1;
+            code = code << 1;
+        }
+
+        assert(false);
+        return 0;
     }
 
     fn dynamic(bitbuf: *u32, bitcnt: *u32, raw_png: []const u8, pos: *u32) u32 {
+        var lengths: [zlib_maxcodes]u16 = undefined;
+        // TODO: fix undefined
+        var lencode_count: [zlib_maxbits + 1]u16 = undefined;
+        var lencode_symbl: [zlib_maxlcodes]u16 = undefined;
+        var discode_count: [zlib_maxbits + 1]u16 = undefined;
+        var discode_symbl: [zlib_maxlcodes]u16 = undefined;
+
+        var lencode = Huffman{
+            .count = &lencode_count,
+            .symbl = &lencode_symbl,
+        };
+        var discode = Huffman{
+            .count = &discode_count,
+            .symbl = &discode_symbl,
+        };
+        discode.count[0] = 0;
+        const order = [_]u16{16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+
         const nlen = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 5) + 257;
         const ndis = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 5) + 1;
         const ncod = IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 4) + 4;
 
-        var lengths: [zlib_maxcodes]u16 = undefined;
-        // TODO: fix undefined
-        var lencode = Huffman{
-            .count = undefined,
-            .symbl = undefined,
-        };
-        var discode = Huffman{
-            .count = undefined,
-            .symbl = undefined,
-        };
-        const order = [_]u16{16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+        std.debug.print("{any} - {any} - {any}\n", .{nlen, ndis, ncod});
 
         for (0..ncod) |i| {
             lengths[order[i]] = @intCast(IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 3));
@@ -239,12 +271,40 @@ pub const IDAT = struct {
             lengths[order[i]] = 0;
         }
 
-        var err = construct(&lencode, &lengths, 19);
-        err = 1;
+        const err = construct(&lencode, &lengths, 19);
+        std.debug.print(".{any}\n", .{err});
+        assert(err == 0);
 
-        _ = nlen;
-        _ = ndis;
-        discode.count[0] = 0;
+        var index: u32 = 0;
+        while (index < nlen + ndis) {
+            var symbol = decode(bitbuf, bitcnt, raw_png, pos, &lencode);
+
+            if (symbol < 16) {
+                lengths[index] = @intCast(symbol);
+                index += 1;
+            } else {
+                var len: u16 = 0;
+
+                if (symbol == 16) {
+                    assert(index > 0);
+                    len = lengths[index - 1];
+                    symbol = 3 + IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 2);
+                } else if (symbol == 17) {
+                    symbol = 3 + IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 3);
+                } else {
+                    symbol = 11 + IDAT.read_bits(bitbuf, bitcnt, raw_png, pos, 7);
+                }
+
+                assert(index + symbol <= nlen + ndis);
+                while (symbol > 0) {
+                    lengths[index] = len;
+                    index += 1;
+                    symbol -= 1;
+                }
+            }
+        }
+
+        assert(lengths[256] == 0);
 
         return 0;
     }
@@ -283,6 +343,7 @@ pub const IDAT = struct {
             const blast = IDAT.read_bits(&bitbuf, &bitcnt, raw_png, pos, 1);
             const ctype = IDAT.read_bits(&bitbuf, &bitcnt, raw_png, pos, 2);
 
+            std.debug.print("{any} - {any}\n", .{blast, ctype});
             if (ctype == 2) {
                 var res = dynamic(&bitbuf, &bitcnt, raw_png, pos);
                 res = 0;
