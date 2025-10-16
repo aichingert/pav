@@ -20,7 +20,7 @@ const Huffman = struct {
     symbol: []u16,
 };
 
-const DeflateState = struct {
+pub const DeflateState = struct {
     out: []u8,
     outlen: usize,
     outcnt: usize,
@@ -31,6 +31,27 @@ const DeflateState = struct {
 
     bitbuf: i32,
     bitcnt: i32,
+
+    pub fn puff(self: *DeflateState) !void { 
+        var last: i32 = 1;
+        var ctype: i32 = 0;
+
+        while (last != 0) {
+            last = try self.bits(1);
+            ctype = try self.bits(2);
+
+            if (ctype == 0) {
+                try self.stored();
+            } else if (ctype == 1) {
+               _ = try self.fixed();
+            } else if (ctype == 2) {
+                try self.dynamic();
+            } else {
+                std.debug.print("here\n", .{});
+                return DeflateError.InvalidSeq;
+            }
+        }
+    }
 
     fn bits(self: *DeflateState, need: i32) !i32 {
         var val: i32 = self.bitbuf;
@@ -65,6 +86,7 @@ const DeflateState = struct {
         len |= @as(u32, self.in[self.incnt + 1]) << 8;
         if (self.in[self.incnt + 2] != (~len & 0xFF) or
             self.in[self.incnt + 3] != (((~len) >> 8) & 0xFF)) {
+            std.debug.print("here\n", .{});
             return DeflateError.InvalidSeq;
         }
 
@@ -105,7 +127,7 @@ const DeflateState = struct {
             first = first << 1;
         }
 
-        return DeflateError.OutOfCodes;
+        return DeflateError.OutOfInput;
     }
 
     fn codes(self: *DeflateState, lencode: *Huffman, distcode: *Huffman) !void {
@@ -140,6 +162,7 @@ const DeflateState = struct {
             } else if (symbol > 256) {
                 symbol -= 257;
                 if (symbol >= 29) {
+                    std.debug.print("here\n", .{});
                     return DeflateError.InvalidSeq;
                 }
 
@@ -235,6 +258,7 @@ const DeflateState = struct {
         ncode = try self.bits(4) + 4;
 
         if (nlen > MAXLCODES or ndist > MAXDCODES) {
+            std.debug.print("here\n", .{});
             return DeflateError.InvalidSeq;
         }
 
@@ -248,6 +272,7 @@ const DeflateState = struct {
 
         var err = construct(&lencode, &lengths, 19);
         if (err != 0) {
+            std.debug.print("this here\n", .{});
             return DeflateError.InvalidSeq;
         }
 
@@ -375,6 +400,7 @@ pub fn construct(h: *Huffman, length: []u16, n: i32) i32 {
         left = left << 1;
         left -= h.count[@intCast(len)];
         if (left < 0) {
+            std.debug.print("{any}\n", .{left});
             return left;
         }
     }
@@ -386,46 +412,14 @@ pub fn construct(h: *Huffman, length: []u16, n: i32) i32 {
     }
 
     symbol = 0;
-    while (symbol < n) {
+    while (symbol < n) : (symbol += 1) {
         if (length[@intCast(symbol)] != 0) {
             h.symbol[@intCast(offs[@intCast(length[@intCast(symbol)])])] = @intCast(symbol);
             offs[@intCast(length[@intCast(symbol)])] += 1;
         }
     }
 
+    std.debug.print("{any}\n", .{left});
     return left;
-}
-
-pub fn puff(dest: []u8, destlen: u32, source: []u8, sourcelen: u32) !usize {
-    var s = DeflateState{
-        .out = dest,
-        .outlen = destlen,
-        .outcnt = 0,
-
-        .in = source,
-        .inlen = sourcelen,
-        .incnt = 0,
-        .bitbuf = 0,
-        .bitcnt = 0,
-    };
-    var last: i32 = 1;
-    var ctype: i32 = 0;
-
-    while (last != 0) {
-        last = try s.bits(1);
-        ctype = try s.bits(2);
-
-        if (ctype == 0) {
-            try s.stored();
-        } else if (ctype == 1) {
-           _ = try s.fixed();
-        } else if (ctype == 2) {
-            try s.dynamic();
-        } else {
-            return DeflateError.InvalidSeq;
-        }
-    }
-
-    return s.outcnt;
 }
 

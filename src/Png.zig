@@ -166,8 +166,6 @@ pub const IDAT = struct {
     }
 
     fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
-        _ = allocator;
-
         const cmf = read(u8, raw_png, pos);
         const flg = read(u8, raw_png, pos);
 
@@ -190,18 +188,47 @@ pub const IDAT = struct {
 
         // TODO: figure the infalte more out from there
 
-        _ = length;
-
-        var a: [1]u8 = [1]u8{0};
-        var b: [1]u8 = [1]u8{0};
-
-        const res = puff.puff(&a, a.len, &b, b.len) catch |err| {
-            assert(false and err == puff.DeflateError.InvalidSeq);
+        const out = allocator.alloc(u8, 100_000) catch {
             return IDAT { .size = 0, .data = undefined };
         };
-        a[0] = 0;
-        b[0] = 1;
-        _ = res;
+
+        var len = length - 2;
+        var is_done = false;
+        var s = puff.DeflateState{
+            .out = out,
+            .outlen = out.len,
+            .outcnt = 0,
+            .in = undefined,
+            .inlen = 0,
+            .incnt = 0,
+            .bitbuf = 0,
+            .bitcnt = 0,
+        };
+
+        while (!is_done) {
+            std.debug.print("{any}\n", .{len});
+            s.in = @constCast(raw_png[pos.*..]);
+            s.inlen = @intCast(len);
+            s.incnt = 0;
+
+            std.debug.print("deflate\n", .{});
+            s.puff() catch |err| {
+                if (err == puff.DeflateError.OutOfInput) {
+                    pos.* += len;
+                    const crc = read(u32, raw_png, pos);
+                    _ = crc;
+
+                    const new_len = read(u32, raw_png, pos);
+                    const chunk_type = read_slice(raw_png, pos, 4);
+                    assert(mem.eql(u8, &png_idat, chunk_type));
+
+                    len = new_len;
+                } else {
+                    std.debug.print("{any}\n", .{err});
+                    is_done = true;
+                }
+            };
+        }
 
         return IDAT {
             .size = 0,
