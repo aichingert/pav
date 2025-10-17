@@ -1,7 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
-const assert = std.debug.assert;
 
 const puff = @import("puff.zig");
 
@@ -38,20 +37,22 @@ pub const IHDR = struct {
 
     fn get_bits_per_pixel(self: *IHDR) !u8 {
         // TODO: support sub byte pixels
-        assert(self.*.bit_depth > 7);
+        if (self.*.bit_depth < 8) {
+            return ParseImageError.InvalidImage;
+        }
 
         switch (self.*.color_type) {
-            0 => assert(self.*.bit_depth == 1 or self.*.bit_depth == 2 
+            0 => if (!(self.*.bit_depth == 1 or self.*.bit_depth == 2 
                      or self.*.bit_depth == 4 or self.*.bit_depth == 8
-                     or self.*.bit_depth == 16),
-            3 => assert(self.*.bit_depth == 1 or self.*.bit_depth == 2
-                     or self.*.bit_depth == 4 or self.*.bit_depth == 8),
+                     or self.*.bit_depth == 16)) return ParseImageError.InvalidImage,
+            3 => if (!(self.*.bit_depth == 1 or self.*.bit_depth == 2
+                     or self.*.bit_depth == 4 or self.*.bit_depth == 8)) return ParseImageError.InvalidImage,
             2 => {
-                assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
+                if (!(self.*.bit_depth == 8 or self.*.bit_depth == 16)) return ParseImageError.InvalidImage;
                 return self.*.bit_depth / 8 * RGB;
             },
             4, 6 => {
-                assert(self.*.bit_depth == 8 or self.*.bit_depth == 16);
+                if (!(self.*.bit_depth == 8 or self.*.bit_depth == 16)) return ParseImageError.InvalidImage;
                 return self.*.bit_depth / 8 * RGBA;
             },
             else => {
@@ -62,13 +63,16 @@ pub const IHDR = struct {
         return self.*.bit_depth / 8;
     }
 
-    fn read_chunk(raw_png: []const u8, pos: *u32) IHDR {
+    fn read_chunk(raw_png: []const u8, pos: *u32) !IHDR {
         const length = read(u32, raw_png, pos);
-        assert(length < raw_png.len - pos.*);
-        const chunk_type = read_slice(raw_png, pos, 4);
+        if (length >= raw_png.len - pos.*) {
+            return ParseImageError.InvalidImage;
+        }
 
-        // NOTE: png has to start with ihdr chunk
-        assert(mem.eql(u8, &png_ihdr, chunk_type));
+        const chunk_type = read_slice(raw_png, pos, 4);
+        if (!mem.eql(u8, &png_ihdr, chunk_type)) {
+            return ParseImageError.InvalidImage;
+        }
 
         const width = read(u32, raw_png, pos);
         const height = read(u32, raw_png, pos);
@@ -99,8 +103,10 @@ pub const PLTE = struct {
     palette: [256]u24,
     palette_size: u32,
 
-    fn read_chunk(raw_png: []const u8, pos: *u32, len: u32) PLTE {
-        assert(len % 3 == 0);
+    fn read_chunk(raw_png: []const u8, pos: *u32, len: u32) !PLTE {
+        if (len % 3 != 0) {
+            return ParseImageError.InvalidImage;
+        }
 
         var palette: [256]u24 = undefined;
         var i: u32 = 0;
@@ -128,7 +134,7 @@ pub const IDAT = struct {
 
     fn get_color_value(self: *IDAT, ihdr: *IHDR, plte: *PLTE, pos: *usize) !u32 {
         switch (ihdr.*.color_type) {
-            0, 4 => assert(false),
+            0, 4 => return ParseImageError.InvalidImage,
             2, 6 => {
                 var r = @as(u32, self.*.data[pos.* + 0]);
                 var g = @as(u32, self.*.data[pos.* + 1]);
@@ -174,7 +180,9 @@ pub const IDAT = struct {
 
         // NOTE: RFC - 1950 "CM = 8 denotes the "deflate" 
         // compression method ... used by gzip and PNG"
-        assert(compression_method == 8 and compression_info < 8);
+        if (compression_method != 8 or compression_info >= 8) {
+            return ParseImageError.InvalidImage;
+        }
         const window_size = @as(u32, 1) << @intCast(compression_info + 8);
         _   = window_size;
 
@@ -184,7 +192,9 @@ pub const IDAT = struct {
         _ = f_level; 
 
         // TODO: support preset dictionarys
-        assert(f_dict == 0 and (@as(u32, cmf) * 256 + flg) % 31 == 0);
+        if (f_dict != 0 or (@as(u32, cmf) * 256 + flg) % 31 != 0) {
+            return ParseImageError.InvalidImage;
+        }
 
         // TODO: figure the infalte more out from there
 
@@ -209,6 +219,8 @@ pub const IDAT = struct {
         }
 
         const in = try allocator.alloc(u8, in_size);
+        defer allocator.free(in);
+
         const out = try allocator.alloc(u8, 4096 * 2160 * 10);
 
         pos.* = src;
@@ -254,7 +266,6 @@ pub const IDAT = struct {
             };
         }
 
-        allocator.free(in);
         return IDAT {
             .size = s.outcnt,
             .data = out,
@@ -411,22 +422,31 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
 
 pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
     // NOTE: png has to have a png signature
-    assert(raw_png.len >= 8 and mem.eql(u8, &png_sig, raw_png[0..8]));
+    if (raw_png.len < 8 or !mem.eql(u8, &png_sig, raw_png[0..8])) {
+        return ParseImageError.ThisError;
+    }
 
     var pos: u32 = 8;
-    var ihdr     = IHDR.read_chunk(raw_png, &pos);
+    var ihdr     = try IHDR.read_chunk(raw_png, &pos);
     var idat     = IDAT{ .data = undefined, .size = undefined };
     var plte     = PLTE{ .palette = undefined, .palette_size = undefined, };
 
     while (true) {
         const length = read(u32, raw_png, &pos);
         const chunk_type = read_slice(raw_png, &pos, 4);
-        assert(length <= raw_png.len - pos);
+
+        if (length > raw_png.len - pos) {
+            return ParseImageError.InvalidImage;
+        }
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
-            idat = try IDAT.read_chunk(allocator, raw_png, &pos, length);
+            idat = IDAT.read_chunk(allocator, raw_png, &pos, length) catch {
+                return ParseImageError.NotSupported;
+            };
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
-            plte = PLTE.read_chunk(raw_png, &pos, length);
+            plte = PLTE.read_chunk(raw_png, &pos, length) catch {
+                return ParseImageError.NotSupported;
+            };
         } else if   (mem.eql(u8, &png_iend, chunk_type)) {
             break;
         } else {

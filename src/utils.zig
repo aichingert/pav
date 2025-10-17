@@ -18,6 +18,7 @@ pub const Image = struct {
 };
 
 pub const ParseImageError = error {
+    ThisError,
     NotSupported,
     InvalidImage,
 };

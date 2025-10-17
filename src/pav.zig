@@ -13,6 +13,7 @@ const wasm_allocator = std.heap.wasm_allocator;
 
 const utils = @import("utils.zig");
 const ImageType = utils.ImageType;
+const ParseImageError = utils.ParseImageError;
 
 const Png = @import("Png.zig");
 
@@ -36,31 +37,40 @@ export fn parse_image(
 ) usize {
     const name_str: []const u8 = name[0..name_len];
     const file_ext: []const u8 = std.fs.path.extension(name_str);
-    assert(file_ext.len > 0);
+
+    if (file_ext.len <= 0) {
+        return 3;
+    }
 
     const ext = std.meta.stringToEnum(ImageType, file_ext[1..]) orelse {
         debug_log(@ptrCast(@constCast("hallo")), 5);
         return 1;
     };
 
+    _ = ext;
     const raw_data: []const u8 = raw[0..raw_len];
+    debug_log(@ptrCast(@constCast(raw_data)), raw_len);
+    return @intCast(raw_data[1]);
 
-    switch (ext) {
-        .png => {
-            const img = Png.extract_pixels(wasm_allocator, raw_data) catch {
-                return 2;
-            };
-            _ = img;
-        },
-        .jpg => {},
-        .webp => {},
-    }
+    //switch (ext) {
+    //    .png => {
+    //        const img = Png.extract_pixels(wasm_allocator, raw_data) catch |err| {
+    //            if (err == ParseImageError.ThisError) {
+    //                return @intCast(raw_data[0]);
+    //            }
+    //            return 2;
+    //        };
+    //        _ = img;
+    //    },
+    //    .jpg => {},
+    //    .webp => {},
+    //}
 
-    debug_log(@ptrCast(@constCast(name_str)), name_str.len);
-    debug_log(@ptrCast(@constCast(file_ext)), file_ext.len);
-    debug_log(name, name_len);
-    debug_log(raw, raw_len);
+    //debug_log(@ptrCast(@constCast(name_str)), name_str.len);
+    //debug_log(@ptrCast(@constCast(file_ext)), file_ext.len);
+    //debug_log(name, name_len);
+    //debug_log(raw, raw_len);
 
-    return 0;
+    //return 0;
 }
 

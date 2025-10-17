@@ -32,11 +32,12 @@ window.onload = async () => {
 
         const reader = new FileReader();
         reader.onload = () => {
+            console.log(reader.result);
             const tenc = new TextEncoder();
             const tdec = new TextDecoder();
 
             const image_path = tenc.encode(event.target.files[0].name);
-            const image_data = reader.result;
+            const image_data = tenc.encode(reader.result);
 
             const path_addr = wasm.instance.exports.alloc(image_path.byteLength);
             const data_addr = wasm.instance.exports.alloc(image_data.byteLength);
@@ -45,15 +46,16 @@ window.onload = async () => {
             const data_dest = new Uint8Array(wasm.instance.exports.memory.buffer, data_addr, image_data.byteLength);
 
             tenc.encodeInto(event.target.files[0].name, path_dest);
-            tenc.encodeInto(tdec.decode(image_data), data_dest);
+            tenc.encodeInto(reader.result, data_dest);
 
             let result = wasm.instance.exports.parse_image(
                 path_addr, 
                 image_path.byteLength, 
                 data_addr, 
                 image_data.byteLength);
+            console.log(result);
         };
-        reader.readAsArrayBuffer(event.target.files[0]);
+        reader.readAsText(event.target.files[0]);
     });
 
     const drop_area = document.getElementById("drop-area");

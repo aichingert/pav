@@ -81,6 +81,11 @@ pub fn main() !void {
     }
 
     assert(in_paths.items.len == out_paths.items.len);
+    defer {
+        for (0..out_paths.items.len) |i| {
+            allocator.free(out_paths.items[i]);
+        } 
+    }
 
     if (methodStr != null) {
         if (std.meta.stringToEnum(Method, methodStr.?)) |m| {
@@ -97,19 +102,18 @@ pub fn main() !void {
 
         const file_size = try file.getEndPos();
         const raw_data = try allocator.alloc(u8, file_size);
+        defer allocator.free(raw_data);
+
         var reader = std.fs.File.Reader.init(file, raw_data);
         const read_len = try reader.read(raw_data);
 
         std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_paths.items[i], read_len / 1000});
 
         var image = try Png.extract_pixels(allocator, raw_data);
+        defer allocator.free(image.pixels);
 
         try v.apply(allocator, &image, method);
         try Ppm.write_image(allocator, out_paths.items[i], &image);
-
-        allocator.free(image.pixels);
-        allocator.free(raw_data);
-        allocator.free(out_paths.items[i]);
     }
 }
 
