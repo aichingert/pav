@@ -165,7 +165,7 @@ pub const IDAT = struct {
         return 0;
     }
 
-    fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) IDAT {
+    fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) !IDAT {
         const cmf = read(u8, raw_png, pos);
         const flg = read(u8, raw_png, pos);
 
@@ -188,51 +188,76 @@ pub const IDAT = struct {
 
         // TODO: figure the infalte more out from there
 
-        const out = allocator.alloc(u8, 100_000) catch {
-            return IDAT { .size = 0, .data = undefined };
-        };
+        const src = pos.*;
+        var ilen: u32 = length - 2;
+        var in_size: u32 = ilen;
+        pos.* += ilen;
+        var crc = read(u32, raw_png, pos);
 
-        var len = length - 2;
-        var is_done = false;
+        while (true) {
+            const new_len = read(u32, raw_png, pos);
+            const ch_type = read_slice(raw_png, pos, 4);
+
+            if (!mem.eql(u8, &png_idat, ch_type)) {
+                break;
+            }
+
+            pos.* += new_len;
+            in_size += new_len;
+
+            crc = read(u32, raw_png, pos);
+        }
+
+        const in = try allocator.alloc(u8, in_size);
+        const out = try allocator.alloc(u8, 4096 * 2160 * 10);
+
+        pos.* = src;
+        ilen = length - 2;
+        var at: u32 = 0;
+
+        while (true) {
+            var i: u32 = 0;
+            while (i < ilen) : (i += 1) {
+                in[at] = read(u8, raw_png, pos);
+                at += 1;
+            }
+
+            crc = read(u32, raw_png, pos);
+
+            const new_len = read(u32, raw_png, pos);
+            const ch_type = read_slice(raw_png, pos, 4);
+
+            if (!mem.eql(u8, &png_idat, ch_type)) {
+                pos.* -= 12;
+                break;
+            }
+
+            ilen = new_len;
+        }
+
         var s = puff.DeflateState{
             .out = out,
             .outlen = out.len,
             .outcnt = 0,
-            .in = undefined,
-            .inlen = 0,
+            .in = in,
+            .inlen = in.len,
             .incnt = 0,
             .bitbuf = 0,
             .bitcnt = 0,
         };
 
-        while (!is_done) {
-            std.debug.print("{any}\n", .{len});
-            s.in = @constCast(raw_png[pos.*..]);
-            s.inlen = @intCast(len);
-            s.incnt = 0;
-
-            std.debug.print("deflate\n", .{});
+        while (s.incnt <= s.inlen - 4) {
             s.puff() catch |err| {
-                if (err == puff.DeflateError.OutOfInput) {
-                    pos.* += len;
-                    const crc = read(u32, raw_png, pos);
-                    _ = crc;
-
-                    const new_len = read(u32, raw_png, pos);
-                    const chunk_type = read_slice(raw_png, pos, 4);
-                    assert(mem.eql(u8, &png_idat, chunk_type));
-
-                    len = new_len;
-                } else {
-                    std.debug.print("{any}\n", .{err});
-                    is_done = true;
+                if (s.incnt < s.inlen - 4) {
+                    return err;
                 }
             };
         }
 
+        allocator.free(in);
         return IDAT {
-            .size = 0,
-            .data = undefined,
+            .size = s.outcnt,
+            .data = out,
         };
     }
 };
@@ -399,7 +424,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
         assert(length <= raw_png.len - pos);
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
-            idat = IDAT.read_chunk(allocator, raw_png, &pos, length);
+            idat = try IDAT.read_chunk(allocator, raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
             plte = PLTE.read_chunk(raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_iend, chunk_type)) {

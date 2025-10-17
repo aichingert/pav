@@ -78,7 +78,7 @@ pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
     var queue = Queue.init(buf);
 
     const total_points: f64 = @floatFromInt(image.*.width * image.*.height);
-    const points_to_place: u32 = @intFromFloat(total_points * 0.1);
+    const points_to_place: u32 = @intFromFloat(total_points * 0.01);
 
     switch (method) {
         .random => place_points_random(points_to_place, &queue, image),
