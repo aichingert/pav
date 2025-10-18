@@ -423,12 +423,13 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
 pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
     // NOTE: png has to have a png signature
     if (raw_png.len < 8 or !mem.eql(u8, &png_sig, raw_png[0..8])) {
-        return ParseImageError.ThisError;
+        return ParseImageError.InvalidImage;
     }
 
     var pos: u32 = 8;
     var ihdr     = try IHDR.read_chunk(raw_png, &pos);
     var idat     = IDAT{ .data = undefined, .size = undefined };
+    defer allocator.free(idat.data);
     var plte     = PLTE{ .palette = undefined, .palette_size = undefined, };
 
     while (true) {
@@ -440,13 +441,9 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
         }
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
-            idat = IDAT.read_chunk(allocator, raw_png, &pos, length) catch {
-                return ParseImageError.NotSupported;
-            };
+            idat = try IDAT.read_chunk(allocator, raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
-            plte = PLTE.read_chunk(raw_png, &pos, length) catch {
-                return ParseImageError.NotSupported;
-            };
+            plte = try PLTE.read_chunk(raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_iend, chunk_type)) {
             break;
         } else {
@@ -466,7 +463,6 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
     while (line < ihdr.height) {
         try apply_filter(&ihdr, &plte, &idat, &line, pixel_buffer);
     }
-    allocator.free(idat.data);
 
     return .{
         .width = ihdr.width,

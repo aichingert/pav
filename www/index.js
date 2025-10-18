@@ -1,4 +1,14 @@
 window.onload = async () => {
+    let pixels;
+
+    const drop_area = document.getElementById("drop-area");
+    const upload_picture = document.getElementById("picture");
+
+    function setup_app() {
+        drop_area.remove();
+        upload_picture.remove();
+    }
+
     const wasm = await WebAssembly.instantiateStreaming(
         fetch("pav.wasm"), 
         {
@@ -11,19 +21,16 @@ window.onload = async () => {
             },
         },
     );
-
-    //let name = "hello.png";
-    //let encoder = new TextEncoder();
-    //let bytes = encoder.encode(name);
-    //let addr  = wasm.instance.exports.alloc(bytes.byteLength);
-    //let dest  = new Uint8Array(wasm.instance.exports.memory.buffer, addr, bytes.byteLength);
-    //encoder.encodeInto(name, dest);
-
-    //let result = wasm.instance.exports.parse_image(addr, bytes.byteLength, addr);
-    //console.log(wasm.instance.exports, result);
-    //wasm.instance.exports.free(addr, bytes.byteLength);
-
-    const upload_picture = document.getElementById("picture");
+    const { 
+        alloc, 
+        free, 
+        init, 
+        image_get_width,
+        image_get_height,
+        image_get_pixels,
+        parse_image, 
+        memory,
+    } = wasm.instance.exports;
 
     upload_picture.addEventListener("change", (event) => {
         if (event.target.files.length <= 0) {
@@ -32,33 +39,32 @@ window.onload = async () => {
 
         const reader = new FileReader();
         reader.onload = () => {
-            console.log(reader.result);
             const tenc = new TextEncoder();
             const tdec = new TextDecoder();
 
             const image_path = tenc.encode(event.target.files[0].name);
-            const image_data = tenc.encode(reader.result);
+            const image_data = new Uint8Array(reader.result);
 
-            const path_addr = wasm.instance.exports.alloc(image_path.byteLength);
-            const data_addr = wasm.instance.exports.alloc(image_data.byteLength);
+            const path_ptr = alloc(image_path.byteLength);
+            const data_ptr = alloc(image_data.byteLength);
 
-            const path_dest = new Uint8Array(wasm.instance.exports.memory.buffer, path_addr, image_path.byteLength);
-            const data_dest = new Uint8Array(wasm.instance.exports.memory.buffer, data_addr, image_data.byteLength);
-
+            const path_dest = new Uint8Array(memory.buffer, path_ptr, image_path.byteLength);
             tenc.encodeInto(event.target.files[0].name, path_dest);
-            tenc.encodeInto(reader.result, data_dest);
 
-            let result = wasm.instance.exports.parse_image(
-                path_addr, 
-                image_path.byteLength, 
-                data_addr, 
-                image_data.byteLength);
-            console.log(result);
+            const data_dest = new Uint8Array(memory.buffer, data_ptr, image_data.byteLength);
+            data_dest.set(image_data);
+
+            const file = init(path_ptr, image_path.byteLength);
+            const data = init(data_ptr, image_data.byteLength);
+
+            const img_ptr = parse_image(file, data);
+            const img_len = image_get_width(img_ptr) * image_get_height(img_ptr);
+            pixels = new Uint32Array(memory.buffer, image_get_pixels(img_ptr), img_len);
+            setup_app();
         };
-        reader.readAsText(event.target.files[0]);
+        reader.readAsArrayBuffer(event.target.files[0]);
     });
 
-    const drop_area = document.getElementById("drop-area");
     drop_area.addEventListener("dragover", (event) => {
         event.stopPropagation();
         event.preventDefault();
