@@ -7,15 +7,23 @@ const utils = @import("utils.zig");
 const Image = utils.Image;
 const Method = utils.Method;
 
+const CTRL_BIT: u32 = 1 << 25;
+
+const Pixel = packed struct(u64) {
+    y: u16,
+    x: u16,
+    color: u32,
+};
+
 pub const Queue = struct {
-    buf: []u64,
+    buf: []Pixel,
 
-    start: u64,
-    end: u64,
-    cap: u64,
-    len: u64,
+    start: usize,
+    end: usize,
+    cap: usize,
+    len: usize,
 
-    pub fn init(buf: []u64) Queue {
+    pub fn init(buf: []Pixel) Queue {
         var self: Queue = undefined;
 
         self.buf = buf;
@@ -26,7 +34,7 @@ pub const Queue = struct {
         return self;
     }
 
-    pub fn enqueue(self: *Queue, value: u64) void {
+    pub fn enqueue(self: *Queue, value: Pixel) void {
         if (self.end == self.cap) {
             assert(self.start != 0);
             self.end = 0;
@@ -37,7 +45,7 @@ pub const Queue = struct {
         self.len += 1;
     }
 
-    pub fn dequeue(self: *Queue) u64 {
+    pub fn dequeue(self: *Queue) Pixel {
         if (self.start + 1 == self.cap) {
             self.start = 0;
         }
@@ -55,62 +63,77 @@ fn place_points_random(
     queue: *Queue, 
     image: *Image,
 ) void {
-    const random = std.crypto.random;
-    const ctrl_b = 1 << 25;
+    // TODO: in wasm call to js to get a random seed
+    var xoshiro = std.Random.DefaultPrng.init(248092);
+    const random = xoshiro.random();
 
     for (0..num_points) |_| {
-        const x = random.intRangeAtMost(u64, 0, image.width - 1);
-        const y = random.intRangeAtMost(u64, 0, image.height - 1);
-        const index = y * image.width + x;
+        const x = random.intRangeAtMost(u16, 0, @intCast(image.width - 1));
+        const y = random.intRangeAtMost(u16, 0, @intCast(image.height - 1));
 
-        if (image.pixels[index] & ctrl_b != ctrl_b) {
-            // NOTE: should just use structs
-            const color: u64 = image.pixels[index]; 
-            queue.enqueue((color << 40) | (y << 20) | (x));
-            image.pixels[index] |= ctrl_b;
+        const index = @as(u32, y) * image.width + @as(u32, x);
+
+        if (image.pixels[index] & CTRL_BIT != CTRL_BIT) {
+            queue.enqueue(.{
+                .x = x,
+                .y = y,
+                .color = image.pixels[index],
+            });
+            image.pixels[index] |= CTRL_BIT;
         }
-
     }
 }
 
 pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
-    const buf  = try allocator.alloc(u64, image.pixels.len);
+    const buf  = try allocator.alloc(Pixel, image.pixels.len);
     var queue = Queue.init(buf);
 
-    const total_points: f64 = @floatFromInt(image.*.width * image.*.height);
+    const total_points: f32 = @floatFromInt(image.width * image.height);
     const points_to_place: u32 = @intFromFloat(total_points * 0.01);
 
     switch (method) {
         .random => place_points_random(points_to_place, &queue, image),
     }
 
-    const ctrl_b = 1 << 25;
-
     while (queue.len > 0) {
         const wave_len = queue.len;
 
         for (0..wave_len) |_| {
-            const value = queue.dequeue();
-            const color = value >> 40;
-            const y = (value >> 20) & 0xFFFFF;
-            const x = value & 0xFFFFF;
-            const index = y * image.width + x;
+            const pxl = queue.dequeue();
+            const index = pxl.y * image.width + pxl.x;
 
-            if (y > 0 and image.pixels[index - image.width] & ctrl_b == 0)  {
-                image.pixels[index - image.width] = @as(u32, @intCast(color)) | ctrl_b;
-                queue.enqueue(color << 40 | (y - 1) << 20 | x);
+            // TODO: maybe use for loops
+            if (pxl.y > 0 and image.pixels[index - image.width] & CTRL_BIT == 0)  {
+                image.pixels[index - image.width] = pxl.color | CTRL_BIT;
+                queue.enqueue(.{
+                    .y = pxl.y - 1,
+                    .x = pxl.x,
+                    .color = pxl.color,
+                });
             }
-            if (x > 0 and image.pixels[index - 1] & ctrl_b == 0) {
-                image.pixels[index - 1] = @as(u32, @intCast(color)) | ctrl_b;
-                queue.enqueue(color << 40 | y << 20 | (x - 1));
+            if (pxl.x > 0 and image.pixels[index - 1] & CTRL_BIT == 0) {
+                image.pixels[index - 1] = pxl.color | CTRL_BIT; 
+                queue.enqueue(.{
+                    .y = pxl.y,
+                    .x = pxl.x - 1,
+                    .color = pxl.color,
+                });
             }
-            if (y + 1 < image.height and image.pixels[index + image.width] & ctrl_b == 0) {
-                image.pixels[index + image.width] = @as(u32, @intCast(color)) | ctrl_b;
-                queue.enqueue(color << 40 | (y + 1) << 20 | x);
+            if (pxl.y + 1 < image.height and image.pixels[index + image.width] & CTRL_BIT == 0) {
+                image.pixels[index + image.width] = pxl.color | CTRL_BIT;
+                queue.enqueue(.{
+                    .y = pxl.y + 1,
+                    .x = pxl.x,
+                    .color = pxl.color,
+                });
             }
-            if (x + 1 < image.width and image.pixels[index + 1] & ctrl_b == 0) {
-                image.pixels[index + 1] = @as(u32, @intCast(color)) | ctrl_b;
-                queue.enqueue(color << 40 | y << 20 | (x + 1));
+            if (pxl.x + 1 < image.width and image.pixels[index + 1] & CTRL_BIT == 0) {
+                image.pixels[index + 1] = pxl.color | CTRL_BIT;
+                queue.enqueue(.{
+                    .y = pxl.y,
+                    .x = pxl.x + 1,
+                    .color = pxl.color,
+                });
             }
         }
     }

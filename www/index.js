@@ -1,13 +1,10 @@
 window.onload = async () => {
+    let width;
+    let height;
     let pixels;
 
     const drop_area = document.getElementById("drop-area");
     const upload_picture = document.getElementById("picture");
-
-    function setup_app() {
-        drop_area.remove();
-        upload_picture.remove();
-    }
 
     const wasm = await WebAssembly.instantiateStreaming(
         fetch("pav.wasm"), 
@@ -31,6 +28,37 @@ window.onload = async () => {
         parse_image, 
         memory,
     } = wasm.instance.exports;
+
+    function init_app() {
+        drop_area.remove();
+        upload_picture.remove();
+
+        const canvas = document.createElement("canvas");
+        canvas.id = "image-showcase";
+        canvas.width = width;
+        canvas.height = height;
+
+        document.body.appendChild(canvas);
+
+        let ctx = canvas.getContext("2d");
+        let img = ctx.getImageData(0, 0, width, height);
+
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                let pos = i * width + j;
+                let off = pos * 4;
+
+                img.data[off + 2] = (pixels[pos] >> 0)  & 0xFF;
+                img.data[off + 1] = (pixels[pos] >> 8)  & 0xFF;
+                img.data[off + 0] = (pixels[pos] >> 16) & 0xFF;
+                img.data[off + 3] = 0xFF;
+            }
+        }
+
+        ctx.putImageData(img, 0, 0);
+        console.log(img);
+
+    }
 
     upload_picture.addEventListener("change", (event) => {
         if (event.target.files.length <= 0) {
@@ -58,9 +86,10 @@ window.onload = async () => {
             const data = init(data_ptr, image_data.byteLength);
 
             const img_ptr = parse_image(file, data);
-            const img_len = image_get_width(img_ptr) * image_get_height(img_ptr);
-            pixels = new Uint32Array(memory.buffer, image_get_pixels(img_ptr), img_len);
-            setup_app();
+            width = image_get_width(img_ptr);
+            height = image_get_height(img_ptr);
+            pixels = new Uint32Array(memory.buffer, image_get_pixels(img_ptr), width * height);
+            init_app();
         };
         reader.readAsArrayBuffer(event.target.files[0]);
     });

@@ -4,6 +4,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const wasm_allocator = std.heap.wasm_allocator;
 
+const v = @import("voronoi.zig");
+
 const utils = @import("utils.zig");
 const Image = utils.Image;
 const ImageType = utils.ImageType;
@@ -69,10 +71,13 @@ export fn parse_image(
 
     switch (ext) {
         .png => {
-            const png_img = Png.extract_pixels(wasm_allocator, raw_data) catch unreachable;
+            var png_img = Png.extract_pixels(wasm_allocator, raw_data) catch unreachable;
+            v.apply(wasm_allocator, &png_img, .random) catch unreachable;
+
             img.width = png_img.width;
             img.height = png_img.height;
             img.pixels = png_img.pixels;
+
             return img;
         },
         .jpg => {},
