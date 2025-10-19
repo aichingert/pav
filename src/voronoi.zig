@@ -9,6 +9,8 @@ const Method = utils.Method;
 
 const CTRL_BIT: u32 = 1 << 25;
 
+extern fn rand() usize;
+
 const Pixel = packed struct(u64) {
     y: u16,
     x: u16,
@@ -56,15 +58,13 @@ pub const Queue = struct {
         return self.buf[self.start - 1];
     }
 };
- 
 
 fn place_points_random(
     num_points: u32, 
     queue: *Queue, 
     image: *Image,
 ) void {
-    // TODO: in wasm call to js to get a random seed
-    var xoshiro = std.Random.DefaultPrng.init(248092);
+    var xoshiro = std.Random.DefaultPrng.init(rand());
     const random = xoshiro.random();
 
     for (0..num_points) |_| {

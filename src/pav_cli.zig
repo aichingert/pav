@@ -11,6 +11,14 @@ const utils = @import("utils.zig");
 const Method = utils.Method;
 const Image = utils.Image;
 
+// NOTE: used because wasm does not have true "randomness"
+// at least what I found therefore call to js using rand
+// native implements this function itself
+pub export fn rand() usize {
+    const random = std.crypto.random;
+    return random.intRangeAtMost(usize, 0, 2 << 30);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
     const allocator = gpa.allocator();
