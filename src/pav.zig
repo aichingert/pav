@@ -66,7 +66,7 @@ export fn image_free(img: *Image) void {
 }
 
 export fn apply_voronoi(img: *Image) void {
-    v.apply(wasm_allocator, img, .random) catch unreachable;
+    v.apply(wasm_allocator, img, .{ .init = .random, .seeds = 100 }) catch unreachable;
 }
 
 export fn parse_image(

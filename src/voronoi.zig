@@ -5,7 +5,7 @@ const Allocator = mem.Allocator;
 
 const utils = @import("utils.zig");
 const Image = utils.Image;
-const Method = utils.Method;
+const VoronoiConfig = utils.VoronoiConfig;
 
 const CTRL_BIT: u32 = 1 << 25;
 
@@ -84,56 +84,53 @@ fn place_points_random(
     }
 }
 
-pub fn apply(allocator: Allocator, image: *Image, method: Method) !void {
+pub fn apply(allocator: Allocator, image: *Image, config: VoronoiConfig) !void {
     const buf  = try allocator.alloc(Pixel, image.pixels.len);
     var queue = Queue.init(buf);
+    var conf = config;
 
-    const total_points: f32 = @floatFromInt(image.width * image.height);
-    const points_to_place: u32 = @intFromFloat(total_points * 0.01);
-
-    switch (method) {
-        .random => place_points_random(points_to_place, &queue, image),
+    // NOTE: when seeds is zero means default use a sixteenth
+    if (conf.seeds == 0) {
+        conf.seeds = @as(u32, @intCast(image.pixels.len)) / 16;
+    } else if (conf.seeds > image.pixels.len) {
+        conf.seeds = @intCast(image.pixels.len);
     }
+
+    switch (conf.init) {
+        .random => place_points_random(conf.seeds, &queue, image),
+    }
+
+    const dirs = [_][3]i64{
+        [_]i64{0, 1, @as(i64, image.width)},
+        [_]i64{1, 0, 1}, 
+        [_]i64{0, -1, -@as(i64, image.width)}, 
+        [_]i64{-1, 0, -1}
+    };
 
     while (queue.len > 0) {
         const wave_len = queue.len;
 
         for (0..wave_len) |_| {
             const pxl = queue.dequeue();
-            const index = pxl.y * image.width + pxl.x;
 
-            // TODO: maybe use for loops
-            if (pxl.y > 0 and image.pixels[index - image.width] & CTRL_BIT == 0)  {
-                image.pixels[index - image.width] = pxl.color | CTRL_BIT;
-                queue.enqueue(.{
-                    .y = pxl.y - 1,
-                    .x = pxl.x,
-                    .color = pxl.color,
-                });
-            }
-            if (pxl.x > 0 and image.pixels[index - 1] & CTRL_BIT == 0) {
-                image.pixels[index - 1] = pxl.color | CTRL_BIT; 
-                queue.enqueue(.{
-                    .y = pxl.y,
-                    .x = pxl.x - 1,
-                    .color = pxl.color,
-                });
-            }
-            if (pxl.y + 1 < image.height and image.pixels[index + image.width] & CTRL_BIT == 0) {
-                image.pixels[index + image.width] = pxl.color | CTRL_BIT;
-                queue.enqueue(.{
-                    .y = pxl.y + 1,
-                    .x = pxl.x,
-                    .color = pxl.color,
-                });
-            }
-            if (pxl.x + 1 < image.width and image.pixels[index + 1] & CTRL_BIT == 0) {
-                image.pixels[index + 1] = pxl.color | CTRL_BIT;
-                queue.enqueue(.{
-                    .y = pxl.y,
-                    .x = pxl.x + 1,
-                    .color = pxl.color,
-                });
+            for (dirs) |dir| {
+                const x = @as(i64, pxl.x) + dir[0];
+                const y = @as(i64, pxl.y) + dir[1];
+
+                if (x < 0 or y < 0 or x >= @as(i64, image.width) or y >= @as(i64, image.height)) {
+                    continue;
+                }
+
+                const idx: u32 = @intCast(@as(i64, pxl.y * image.width + pxl.x) + dir[2]);
+
+                if (image.pixels[idx] & CTRL_BIT == 0) {
+                    image.pixels[idx] = pxl.color | CTRL_BIT;
+                    queue.enqueue(.{
+                        .y = @intCast(y),
+                        .x = @intCast(x),
+                        .color = pxl.color,
+                    });
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const Allocator = mem.Allocator;
 const assert = std.debug.assert;
 
 const Png = @import("Png.zig");
@@ -8,8 +9,10 @@ const Webp = @import("Webp.zig");
 
 const v = @import("voronoi.zig");
 const utils = @import("utils.zig");
-const Method = utils.Method;
 const Image = utils.Image;
+const Method = utils.Method;
+const ImageType = utils.ImageType;
+const VoronoiConfig = utils.VoronoiConfig;
 
 // NOTE: used because wasm does not have true "randomness"
 // at least what I found therefore call to js using rand
@@ -19,109 +22,97 @@ pub export fn rand() usize {
     return random.intRangeAtMost(usize, 0, 2 << 30);
 }
 
+fn is_argument(arg: [:0]u8, s: []const u8) bool {
+    return arg.len > s.len and mem.eql(u8, arg[0..s.len], s);
+}
+
+fn process(
+    allocator: Allocator, 
+    in_path: []const u8, 
+    out_path: []const u8,
+    config: VoronoiConfig,
+) !void {
+    const file_ext: []const u8 = std.fs.path.extension(in_path);
+    if (file_ext.len <= 0) {
+        std.debug.print(
+            "[INFO]: missing file extension: skipping `{s}`\n", 
+            .{in_path});
+        return;
+    }
+
+    const ext = std.meta.stringToEnum(ImageType, file_ext[1..]) orelse {
+        std.debug.print(
+            "[INFO]: unsupported file extension: skipping `{s}`\n", 
+            .{file_ext});
+        return;
+    };
+
+    const file = try std.fs.cwd().openFile(in_path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const raw_data = try allocator.alloc(u8, file_size);
+    defer allocator.free(raw_data);
+
+    var reader = std.fs.File.Reader.init(file, raw_data);
+    const read_len = try reader.read(raw_data);
+    var image: Image = undefined;
+
+    std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_path, read_len / 1000}); 
+
+    switch (ext) {
+        .png => image = try Png.extract_pixels(allocator, raw_data),
+        .jpg => {
+            std.debug.print("[INFO]: not yet supported jpg: skipping\n", .{});
+            return;
+        },
+        .webp => {
+            std.debug.print("[INFO]: not yet supported webp: skipping\n", .{});
+            return;
+        },
+    }
+    defer allocator.free(image.pixels);
+    try v.apply(allocator, &image, config);
+
+    // TODO: check output as well
+    try Ppm.write_image(allocator, out_path, &image);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
     const allocator = gpa.allocator();
-    defer {
-        const deinit_status = gpa.deinit();
-        if (deinit_status == .leak) {
-            std.debug.print("LEAKING\n", .{});
-        }
-    }
+    defer { _ = gpa.deinit(); }
 
-    var args = try std.process.ArgIterator.initWithAllocator(allocator);
-    assert(args.skip());
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
 
-    var in_paths: std.ArrayList([]const u8) = .{};
-    var out_paths: std.ArrayList([]const u8) = .{};
-    defer in_paths.deinit(allocator);
-    defer out_paths.deinit(allocator);
+    var i: u32 = 1;
+    var config = VoronoiConfig{
+        .init = .random,
+        .seeds = 0,
+    };
 
-    var method: Method = .random;
-    var has_in: bool = false;
-    var methodStr: ?[]const u8 = null;
-
-    while (args.next()) |arg| {
-        if          (arg.len > 9 and mem.eql(u8, arg[0..9], "--method=")) {
-            methodStr = arg[9..];
-        } else if   (arg.len > 3 and mem.eql(u8, arg[0..3], "-o=")) {
-            if (has_in) {
-                const out_path = try allocator.dupe(u8, arg[3..]);
-                try out_paths.append(allocator, out_path);
-                has_in = false;
+    while (i < args.len) : (i += 1) {
+        if          (is_argument(args[i], "--method=")) {
+            config.init = std.meta.stringToEnum(Method, args[i][9..]) orelse {
+                std.debug.print("Error: invalid method=`{s}`\n", .{args[i][9..]});
+                std.process.exit(1);
+            };
+        } else if   (is_argument(args[i], "--seeds=")) {
+            config.seeds = try std.fmt.parseInt(u32, args[i][8..], 10);
+        } else {
+            if (i + 1 < args.len and is_argument(args[i + 1], "--out=")) {
+                const out_path = args[i + 1][6..];
+                try process(allocator, args[i], out_path, config);
+                i += 1;
             } else {
-                std.debug.print("ERROR: missing input for output specifier\n", .{});
-                return;
+                const dir_name = std.fs.path.dirname(args[i]) orelse ".";
+                const to_concat = [_][]const u8{dir_name, "/out_", std.fs.path.basename(args[i])};
+                const out_path = try mem.concat(allocator, u8, &to_concat);
+                defer allocator.free(out_path);
+                try process(allocator, args[i], out_path, config);
             }
-        } else {
-            if (has_in) {
-                const dirname = 
-                    if (std.fs.path.dirname(arg)) |dir| 
-                        dir 
-                    else
-                        ".";
-
-                const img_out_path = try mem.concat(
-                    allocator, 
-                    u8, 
-                    &[_][]const u8{dirname, "/out_", std.fs.path.basename(arg)});
-                try out_paths.append(allocator, img_out_path);
-            }
-
-            has_in = true;
-            try in_paths.append(allocator, arg);
         }
-    }
-
-    if (has_in) {
-        const path = in_paths.items[in_paths.items.len - 1];
-        const dirname =
-            if (std.fs.path.dirname(path)) |dir| 
-                dir 
-            else
-                ".";
-
-        const img_out_path = try mem.concat(
-            allocator, 
-            u8, 
-            &[_][]const u8{dirname, "/out_", std.fs.path.basename(path)});
-        try out_paths.append(allocator, img_out_path);
-    }
-
-    assert(in_paths.items.len == out_paths.items.len);
-    defer {
-        for (0..out_paths.items.len) |i| {
-            allocator.free(out_paths.items[i]);
-        } 
-    }
-
-    if (methodStr != null) {
-        if (std.meta.stringToEnum(Method, methodStr.?)) |m| {
-            method = m;
-        } else {
-            std.debug.print("Error: invalid method=`{s}`\n", .{methodStr.?});
-            std.process.exit(1);
-        }
-    }
-
-    for (0..in_paths.items.len) |i| {
-        const file = try std.fs.cwd().openFile(in_paths.items[i], .{});
-        defer file.close();
-
-        const file_size = try file.getEndPos();
-        const raw_data = try allocator.alloc(u8, file_size);
-        defer allocator.free(raw_data);
-
-        var reader = std.fs.File.Reader.init(file, raw_data);
-        const read_len = try reader.read(raw_data);
-
-        std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_paths.items[i], read_len / 1000});
-
-        var image = try Png.extract_pixels(allocator, raw_data);
-        defer allocator.free(image.pixels);
-
-        try v.apply(allocator, &image, method);
-        try Ppm.write_image(allocator, out_paths.items[i], &image);
     }
 }
 

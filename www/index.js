@@ -87,8 +87,16 @@ window.onload = async () => {
             image_free(cpy);
         };
 
+        const slider = document.createElement("input");
+        const size   = width * height;
+        slider.type = "range";
+        slider.min = "0";
+        slider.max = size.toString();
+        slider.step = (size / 10000).toString();
+
         document.body.appendChild(canvas);
         document.body.appendChild(button);
+        document.body.appendChild(slider);
 
     }
 

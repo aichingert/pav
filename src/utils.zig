@@ -11,6 +11,11 @@ pub const Method = enum {
     random,
 };
 
+pub const VoronoiConfig = struct {
+    init: Method,
+    seeds: u32,
+};
+
 pub const Image = struct {
     width: u32,
     height: u32,
