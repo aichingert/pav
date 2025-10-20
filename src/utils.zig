@@ -7,8 +7,8 @@ pub const ImageType = enum {
     webp,
 };
 
-pub const Method = enum {
-    random,
+pub const Method = enum(u8) {
+    random = 0,
 };
 
 pub const VoronoiConfig = struct {

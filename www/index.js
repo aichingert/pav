@@ -63,12 +63,39 @@ window.onload = async () => {
 
         ctx.putImageData(img, 0, 0);
 
+        const slider = document.createElement("input");
+        const size   = Math.floor((width * height) / 8);
+        const init   = Math.floor(size / 2);
+        slider.type = "range";
+        slider.min = "1";
+        slider.max = size.toString();
+        slider.value = init;
+        slider.step = (size / 10000).toString();
+        slider.oninput = (event) => num_inp.value = Math.floor(event.target.valueAsNumber);
+
+        const num_inp = document.createElement("input");
+        num_inp.type = "number";
+        num_inp.min = "1";
+        num_inp.max = size.toString();
+        num_inp.value = init;
+        num_inp.oninput = (event) => {
+            const value = event.target.valueAsNumber;
+
+            if (isNaN(value)) {
+                // TODO: error message
+                return;
+            }
+
+            slider.value = value;
+        };
+
         const button = document.createElement("button");
         button.innerHTML = "randomize";
         button.onclick = () => {
             let cpy = image_copy(image);
+            let val = Math.floor(slider.value);
 
-            apply_voronoi(cpy);
+            apply_voronoi(cpy, 0, val);
             let cpx = new Uint32Array(memory.buffer, image_get_pixels(cpy), width * height);
 
             for (let i = 0; i < height; i++) {
@@ -86,18 +113,11 @@ window.onload = async () => {
             ctx.putImageData(img, 0, 0);
             image_free(cpy);
         };
-
-        const slider = document.createElement("input");
-        const size   = width * height;
-        slider.type = "range";
-        slider.min = "0";
-        slider.max = size.toString();
-        slider.step = (size / 10000).toString();
-
+ 
         document.body.appendChild(canvas);
-        document.body.appendChild(button);
         document.body.appendChild(slider);
-
+        document.body.appendChild(num_inp);
+        document.body.appendChild(button);
     }
 
     upload_picture.addEventListener("change", (event) => {

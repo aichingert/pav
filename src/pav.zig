@@ -7,8 +7,10 @@ const wasm_allocator = std.heap.wasm_allocator;
 const v = @import("voronoi.zig");
 
 const utils = @import("utils.zig");
+const Method = utils.Method;
 const Image = utils.Image;
 const ImageType = utils.ImageType;
+const VoronoiConfig = utils.VoronoiConfig;
 const ParseImageError = utils.ParseImageError;
 
 const Png = @import("Png.zig");
@@ -65,8 +67,8 @@ export fn image_free(img: *Image) void {
     wasm_allocator.destroy(img);
 }
 
-export fn apply_voronoi(img: *Image) void {
-    v.apply(wasm_allocator, img, .{ .init = .random, .seeds = 100 }) catch unreachable;
+export fn apply_voronoi(img: *Image, init: Method, seeds: u32) void {
+    v.apply(wasm_allocator, img, .{ .init = init, .seeds = seeds }) catch unreachable;
 }
 
 export fn parse_image(
