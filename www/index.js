@@ -37,34 +37,95 @@ window.onload = async () => {
         memory,
     } = wasm.instance.exports;
 
+    function set_image_scaled(canvas, pxls) {
+        let ctx = canvas.getContext("2d");
+        let scale = 1;
+
+        if (width < canvas.width && height < canvas.height) {
+            while ((scale + 1) * width < canvas.width && (scale + 1) * height < canvas.height) {
+                scale += 1;
+            }
+
+            let img = ctx.getImageData(0, 0, width * scale, height * scale);
+
+            for (let y = 0; y < height; y++) {
+                for (let ys = 0; ys < scale; ys++) {
+                    for (let x = 0; x < width; x++) {
+                        for (let xs = 0; xs < scale; xs++) {
+                            const pos = y * width + x;
+                            const yp = y * width * scale * scale + ys * width * scale;
+                            const xp = x * scale + xs;
+                            const off = (yp + xp) * 4;
+
+                            img.data[off + 2] = (pxls[pos] >> 0)  & 0xFF;
+                            img.data[off + 1] = (pxls[pos] >> 8)  & 0xFF;
+                            img.data[off + 0] = (pxls[pos] >> 16) & 0xFF;
+                            img.data[off + 3] = 0xFF;
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(img, 0, 0);
+        } else {
+            while ((1 / scale) * width > canvas.width || (1 / scale) * height > canvas.height) {
+                scale += 1;
+            }
+
+            let img = ctx.getImageData(0, 0, Math.floor(width / scale), Math.floor(height / scale));
+
+            for (let y = 0; y < height; y += scale) {
+                for (let x = 0; x < width; x += scale) {
+                    let avg_r = 0;
+                    let avg_g = 0;
+                    let avg_b = 0;
+                    let cnt = 0;
+
+                    for (let ys = 0; ys < scale; ys++) {
+                        for (let xs = 0; xs < scale; xs++) {
+                            if (y + ys >= height || x + xs >= width) {
+                                continue;
+                            }
+
+                            const pos = (y + ys) * width + x + xs;
+                            avg_r += (pxls[pos] >> 16) & 0xFF;
+                            avg_g += (pxls[pos] >> 8) & 0xFF;
+                            avg_b += (pxls[pos] >> 0) & 0xFF;
+                            cnt += 1;
+                        }
+                    }
+
+                    const pos = y * width + x;
+                    const off = ((y / scale) * Math.floor((width / scale)) + (x / scale)) * 4;
+
+                    img.data[off + 0] = avg_r / cnt;
+                    img.data[off + 1] = avg_g / cnt;
+                    img.data[off + 2] = avg_b / cnt;
+                    img.data[off + 3] = 0xFF;
+                }
+            } 
+
+            ctx.putImageData(img, 0, 0);
+        } 
+    }
+
     function init_app() {
         drop_area.remove();
         upload_picture.remove();
 
+        console.log(window.innerWidth);
+        console.log(window.innerHeight);
+
         const canvas = document.createElement("canvas");
         canvas.id = "image-showcase";
-        canvas.width = width;
-        canvas.height = height;
+        canvas.style = "display: block;";
+        canvas.width = 3 * window.innerWidth / 4;
+        canvas.height = 3 * window.innerHeight / 4;
 
-        let ctx = canvas.getContext("2d");
-        let img = ctx.getImageData(0, 0, width, height);
-
-        for (let i = 0; i < height; i++) {
-            for (let j = 0; j < width; j++) {
-                let pos = i * width + j;
-                let off = pos * 4;
-
-                img.data[off + 2] = (pixels[pos] >> 0)  & 0xFF;
-                img.data[off + 1] = (pixels[pos] >> 8)  & 0xFF;
-                img.data[off + 0] = (pixels[pos] >> 16) & 0xFF;
-                img.data[off + 3] = 0xFF;
-            }
-        }
-
-        ctx.putImageData(img, 0, 0);
-
+        set_image_scaled(canvas, pixels);
+ 
         const slider = document.createElement("input");
-        const size   = Math.floor((width * height) / 8);
+        const size   = Math.min(100_000, Math.floor((width * height) / 8));
         const init   = Math.floor(size / 2);
         slider.type = "range";
         slider.min = "1";
@@ -97,20 +158,8 @@ window.onload = async () => {
 
             apply_voronoi(cpy, 0, val);
             let cpx = new Uint32Array(memory.buffer, image_get_pixels(cpy), width * height);
+            set_image_scaled(canvas, cpx);
 
-            for (let i = 0; i < height; i++) {
-                for (let j = 0; j < width; j++) {
-                    let pos = i * width + j;
-                    let off = pos * 4;
-
-                    img.data[off + 2] = (cpx[pos] >> 0)  & 0xFF;
-                    img.data[off + 1] = (cpx[pos] >> 8)  & 0xFF;
-                    img.data[off + 0] = (cpx[pos] >> 16) & 0xFF;
-                    img.data[off + 3] = 0xFF;
-                }
-            }
-
-            ctx.putImageData(img, 0, 0);
             image_free(cpy);
         };
  
