@@ -7,13 +7,30 @@
         <link rel="local icon" type="image/x-icon" href="favicon.ico">
         <script src="index.js"></script>
         <style>
+            :root {
+                --main-gray: #1e1c1c;
+                --main-blue: #8ba4b0;
+                --main-gren: #8a9a7b;
+            }
+
             body {
-                background-color: #282828;
+                background-color: var(--main-gray);
                 box-sizing: border-box;
             }
+
             h1 {
                 font-size: 45px;
-                color: #458588;
+                color: var(--main-blue);
+            }
+
+            a {
+                text-decoration: none;
+                color: var(--main-blue);
+            }
+            a:hover {
+                color: #7A8A91;
+                cursor: pointer;
+                text-decoration: underline;
             }
 
             .upload-area {
@@ -22,29 +39,25 @@
                 justify-content: center;
                 width: 600px; 
                 height: 400px; 
-                border: thick dashed #83a598; 
+                border: thick dashed var(--main-blue); 
             }
         </style>
     </head> 
     <body>
-        <h1 style="justify-content: center; align-items: center;">
+        <h1 style="display: flex; justify-content: center; align-items: end">
             <span>Pixelate Art</span>
-            <span style="color: #689d6a; font-size: 30px">with</span>
-            <span>Voronoi</span>
+            <span style="color: var(--main-gren); font-size: 35px">&nbsp with &nbsp</span>
+            <a href="https://en.wikipedia.org/wiki/Voronoi_diagram">Voronoi</a>
         </h1>
-        
-        <input 
-            type="file" 
-            id="picture" 
-            name="picture" 
-            accept="image/png"
-            style="display: none"
-        />
 
-        <div
-            id="drop-area"
-            class="upload-area">
-            <svg fill="#458588" width="100px" height="100px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19,13a1,1,0,0,0-1,1v.38L16.52,12.9a2.79,2.79,0,0,0-3.93,0l-.7.7L9.41,11.12a2.85,2.85,0,0,0-3.93,0L4,12.6V7A1,1,0,0,1,5,6h7a1,1,0,0,0,0-2H5A3,3,0,0,0,2,7V19a3,3,0,0,0,3,3H17a3,3,0,0,0,3-3V14A1,1,0,0,0,19,13ZM5,20a1,1,0,0,1-1-1V15.43l2.9-2.9a.79.79,0,0,1,1.09,0l3.17,3.17,0,0L15.46,20Zm13-1a.89.89,0,0,1-.18.53L13.31,15l.7-.7a.77.77,0,0,1,1.1,0L18,17.21ZM22.71,4.29l-3-3a1,1,0,0,0-.33-.21,1,1,0,0,0-.76,0,1,1,0,0,0-.33.21l-3,3a1,1,0,0,0,1.42,1.42L18,4.41V10a1,1,0,0,0,2,0V4.41l1.29,1.3a1,1,0,0,0,1.42,0A1,1,0,0,0,22.71,4.29Z"/></svg> 
+        <div style="display: flex; justify-content: center; align-items: end">
+            <input type="file" id="picture" name="picture" accept="image/png"style="display: none" />
+
+            <div id="drop-area" class="upload-area">
+                <svg fill="var(--main-gren)" width="100px" height="100px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19,13a1,1,0,0,0-1,1v.38L16.52,12.9a2.79,2.79,0,0,0-3.93,0l-.7.7L9.41,11.12a2.85,2.85,0,0,0-3.93,0L4,12.6V7A1,1,0,0,1,5,6h7a1,1,0,0,0,0-2H5A3,3,0,0,0,2,7V19a3,3,0,0,0,3,3H17a3,3,0,0,0,3-3V14A1,1,0,0,0,19,13ZM5,20a1,1,0,0,1-1-1V15.43l2.9-2.9a.79.79,0,0,1,1.09,0l3.17,3.17,0,0L15.46,20Zm13-1a.89.89,0,0,1-.18.53L13.31,15l.7-.7a.77.77,0,0,1,1.1,0L18,17.21ZM22.71,4.29l-3-3a1,1,0,0,0-.33-.21,1,1,0,0,0-.76,0,1,1,0,0,0-.33.21l-3,3a1,1,0,0,0,1.42,1.42L18,4.41V10a1,1,0,0,0,2,0V4.41l1.29,1.3a1,1,0,0,0,1.42,0A1,1,0,0,0,22.71,4.29Z"/></svg> 
+            </div>
         </div>
+
+        
     </body>
 </html>

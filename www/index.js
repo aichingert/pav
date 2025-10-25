@@ -38,16 +38,21 @@ window.onload = async () => {
     } = wasm.instance.exports;
 
     function set_image_scaled(canvas, pxls) {
+        const w_width = window.innerWidth - 50;
+        const w_height = 3 * window.innerHeight / 4;
+        const is_up = width < w_width && height < w_height;
+
+        const scale = Math.ceil(is_up
+            ? Math.min(w_width / width, w_height / height)
+            : Math.max(width / w_width, height / w_height)
+        );
+        canvas.width = is_up ? width * scale  : Math.floor(width / scale);
+        canvas.height = is_up ? height * scale : Math.floor(height / scale);
+
         let ctx = canvas.getContext("2d");
-        let scale = 1;
+        let img = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        if (width < canvas.width && height < canvas.height) {
-            while ((scale + 1) * width < canvas.width && (scale + 1) * height < canvas.height) {
-                scale += 1;
-            }
-
-            let img = ctx.getImageData(0, 0, width * scale, height * scale);
-
+        if (is_up) {
             for (let y = 0; y < height; y++) {
                 for (let ys = 0; ys < scale; ys++) {
                     for (let x = 0; x < width; x++) {
@@ -65,15 +70,7 @@ window.onload = async () => {
                     }
                 }
             }
-
-            ctx.putImageData(img, 0, 0);
         } else {
-            while ((1 / scale) * width > canvas.width || (1 / scale) * height > canvas.height) {
-                scale += 1;
-            }
-
-            let img = ctx.getImageData(0, 0, Math.floor(width / scale), Math.floor(height / scale));
-
             for (let y = 0; y < height; y += scale) {
                 for (let x = 0; x < width; x += scale) {
                     let avg_r = 0;
@@ -104,24 +101,23 @@ window.onload = async () => {
                     img.data[off + 3] = 0xFF;
                 }
             } 
-
-            ctx.putImageData(img, 0, 0);
         } 
+
+        ctx.putImageData(img, 0, 0);
     }
 
     function init_app() {
-        drop_area.remove();
-        upload_picture.remove();
+        drop_area.style.display = "none";
+        upload_picture.style.display = "none";
 
-        console.log(window.innerWidth);
-        console.log(window.innerHeight);
+        const container = document.createElement("div");
+        container.style = "display: flex; flex-wrap: wrap; justify-content: center; align-items: center";
+
+        const tool_bar  = document.createElement("div");
+        tool_bar.style = "width: 100%";
 
         const canvas = document.createElement("canvas");
         canvas.id = "image-showcase";
-        canvas.style = "display: block;";
-        canvas.width = 3 * window.innerWidth / 4;
-        canvas.height = 3 * window.innerHeight / 4;
-
         set_image_scaled(canvas, pixels);
  
         const slider = document.createElement("input");
@@ -131,7 +127,7 @@ window.onload = async () => {
         slider.min = "1";
         slider.max = size.toString();
         slider.value = init;
-        slider.step = (size / 10000).toString();
+        slider.step = (size / 10_000).toString();
         slider.oninput = (event) => num_inp.value = Math.floor(event.target.valueAsNumber);
 
         const num_inp = document.createElement("input");
@@ -162,11 +158,14 @@ window.onload = async () => {
 
             image_free(cpy);
         };
- 
-        document.body.appendChild(canvas);
-        document.body.appendChild(slider);
-        document.body.appendChild(num_inp);
-        document.body.appendChild(button);
+
+        tool_bar.appendChild(slider);
+        tool_bar.appendChild(num_inp);
+        tool_bar.appendChild(button);
+
+        container.appendChild(tool_bar);
+        container.appendChild(canvas);
+        document.body.appendChild(container);
     }
 
     upload_picture.addEventListener("change", (event) => {
