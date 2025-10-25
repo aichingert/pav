@@ -106,19 +106,31 @@ window.onload = async () => {
         ctx.putImageData(img, 0, 0);
     }
 
+    function set_voronoied_image(canvas, pixels) {
+        let cpy = image_copy(image);
+        let val = Math.floor(pixels);
+
+        apply_voronoi(cpy, 0, val);
+        let cpx = new Uint32Array(memory.buffer, image_get_pixels(cpy), width * height);
+        set_image_scaled(canvas, cpx);
+
+        image_free(cpy);
+    }
+
     function init_app() {
         drop_area.style.display = "none";
         upload_picture.style.display = "none";
 
         const container = document.createElement("div");
-        container.style = "display: flex; flex-wrap: wrap; justify-content: center; align-items: center";
+        container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
 
         const tool_bar  = document.createElement("div");
-        tool_bar.style = "width: 100%";
-
-        const canvas = document.createElement("canvas");
-        canvas.id = "image-showcase";
-        set_image_scaled(canvas, pixels);
+        tool_bar.style.gap = "20px";
+        tool_bar.style.display = "flex";
+        tool_bar.style.padding = "15px 50px 15px 50px";
+        tool_bar.style.marginBottom = "20px";
+        tool_bar.style.borderRadius = "25px";
+        tool_bar.style.backgroundColor = "var(--main-light-gray)";
  
         const slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
@@ -128,7 +140,10 @@ window.onload = async () => {
         slider.max = size.toString();
         slider.value = init;
         slider.step = (size / 10_000).toString();
-        slider.oninput = (event) => num_inp.value = Math.floor(event.target.valueAsNumber);
+        slider.oninput = (event) => {
+            num_inp.value = Math.floor(event.target.valueAsNumber);
+            set_voronoied_image(canvas, slider.value);
+        }
 
         const num_inp = document.createElement("input");
         num_inp.type = "number";
@@ -144,26 +159,31 @@ window.onload = async () => {
             }
 
             slider.value = value;
+            set_voronoied_image(canvas, value);
         };
 
         const button = document.createElement("button");
         button.innerHTML = "randomize";
-        button.onclick = () => {
-            let cpy = image_copy(image);
-            let val = Math.floor(slider.value);
+        button.style.padding = "1rem";
+        button.style.color = "hsl(0, 0%, 95%)";
+        button.style.fontSize = "15px";
+        button.style.fontWeight = "bolder";
+        button.style.background = "var(--main-light-light-gray)";
+        button.style.boxShadow = "inset 0 1px 2px #ffffff70, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        button.onmouseover = () => button.style.background = "var(--main-gren)";
+        button.onmouseout = () => button.style.background = "var(--main-light-light-gray)";
 
-            apply_voronoi(cpy, 0, val);
-            let cpx = new Uint32Array(memory.buffer, image_get_pixels(cpy), width * height);
-            set_image_scaled(canvas, cpx);
-
-            image_free(cpy);
-        };
+        button.onclick = () => set_voronoied_image(canvas, slider.value);
 
         tool_bar.appendChild(slider);
         tool_bar.appendChild(num_inp);
         tool_bar.appendChild(button);
-
         container.appendChild(tool_bar);
+
+        const canvas = document.createElement("canvas");
+        canvas.id = "image-showcase";
+        set_image_scaled(canvas, pixels);
+
         container.appendChild(canvas);
         document.body.appendChild(container);
     }
