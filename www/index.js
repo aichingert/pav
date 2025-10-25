@@ -131,7 +131,7 @@ window.onload = async () => {
         tool_bar.style.marginBottom = "20px";
         tool_bar.style.borderRadius = "25px";
         tool_bar.style.backgroundColor = "var(--main-light-gray)";
- 
+
         const slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
         const init   = Math.floor(size / 2);
@@ -147,37 +147,64 @@ window.onload = async () => {
 
         const num_inp = document.createElement("input");
         num_inp.type = "number";
+        num_inp.style = `
+            padding: 1rem;
+            color: var(--main-blue); 
+            background: var(--main-light-light-gray); 
+            border-style: none; 
+            align-items: center;
+            font-size: 15px;
+            font-weight: bolder;
+        `;
+        num_inp.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         num_inp.min = "1";
         num_inp.max = size.toString();
         num_inp.value = init;
+        num_inp.onbeforeinput = (event) => {
+            if(!/^([0-9]*)$/.test(event.data ?? "")) {
+                event.preventDefault();
+            }
+            return;
+        };
         num_inp.oninput = (event) => {
             const value = event.target.valueAsNumber;
-
-            if (isNaN(value)) {
-                // TODO: error message
-                return;
-            }
-
             slider.value = value;
             set_voronoied_image(canvas, value);
         };
+        num_inp.onmouseover = () => num_inp.style.background = "var(--main-gren)";
+        num_inp.onmouseout = () => num_inp.style.background = "var(--main-light-light-gray)";
 
-        const button = document.createElement("button");
-        button.innerHTML = "randomize";
-        button.style.padding = "1rem";
-        button.style.color = "hsl(0, 0%, 95%)";
-        button.style.fontSize = "15px";
-        button.style.fontWeight = "bolder";
-        button.style.background = "var(--main-light-light-gray)";
-        button.style.boxShadow = "inset 0 1px 2px #ffffff70, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        button.onmouseover = () => button.style.background = "var(--main-gren)";
-        button.onmouseout = () => button.style.background = "var(--main-light-light-gray)";
 
-        button.onclick = () => set_voronoied_image(canvas, slider.value);
+        const shuffle_btn = document.createElement("button");
+        const edit_btn    = document.createElement("button");
+
+        const dice_icon   = diceIcon.content.cloneNode(true).children[0];
+        dice_icon.style   = "width: 40px; height: 40px";
+        const pencil_icon = pencilIcon.content.cloneNode(true).children[0];
+        pencil_icon.style = "width: 40px; height: 40px";
+
+        shuffle_btn.style.padding = "1rem";
+        shuffle_btn.style.background = "var(--main-light-light-gray)";
+        shuffle_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        shuffle_btn.appendChild(dice_icon);
+
+        // TODO: pick a better color
+        shuffle_btn.onmouseover = () => shuffle_btn.style.background = "var(--main-blue)";
+        shuffle_btn.onmouseout = () => shuffle_btn.style.background = "var(--main-light-light-gray)";
+        shuffle_btn.onclick = () => set_voronoied_image(canvas, slider.value);
+
+        edit_btn.style.padding = "1rem";
+        edit_btn.style.background = "var(--main-light-light-gray)";
+        edit_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        edit_btn.onmouseover = () => edit_btn.style.background = "var(--main-gren)";
+        edit_btn.onmouseout = () => edit_btn.style.background = "var(--main-light-light-gray)";
+
+        edit_btn.appendChild(pencil_icon);
 
         tool_bar.appendChild(slider);
         tool_bar.appendChild(num_inp);
-        tool_bar.appendChild(button);
+        tool_bar.appendChild(shuffle_btn);
+        tool_bar.appendChild(edit_btn);
         container.appendChild(tool_bar);
 
         const canvas = document.createElement("canvas");
