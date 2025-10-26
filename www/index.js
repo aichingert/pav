@@ -123,23 +123,22 @@ window.onload = async () => {
 
         const container = document.createElement("div");
         container.style.display = "grid";
-        container.style.gridTemplateAreas = `
-            "tool-bar tool-bar"
-            "edit-bar image-showcase"
-        `;
+        container.style.gap = "15px";
+        container.style.justifyContent = "center";
+        container.style.alignItems = "center";
+        container.style.gridTemplateAreas = `"tool-bar tool-bar" "edit-bar image-showcase"`;
         //container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
 
         const tool_bar  = document.createElement("div");
-        tool_bar.class = "tool-bar";
-        tool_bar.style.gap = "20px";
+        //tool_bar.style.gap = "20px";
         tool_bar.style.display = "flex";
         tool_bar.style.padding = "15px 50px 15px 50px";
-        tool_bar.style.marginBottom = "20px";
         tool_bar.style.borderRadius = "25px";
         tool_bar.style.backgroundColor = "var(--main-light-gray)";
+        tool_bar.style.gridArea = "tool-bar";
 
         const edit_bar = document.createElement("div");
-        edit_bar.class = "edit-bar";
+        edit_bar.style.gridArea = "edit-bar";
         edit_bar.innerHTML = `
             hello world i want a lot more text
             hello world i want a lot more text
@@ -151,6 +150,7 @@ window.onload = async () => {
             hello world i want a lot more text
             hello world i want a lot more text
         `;
+        edit_bar.style.display = "none";
 
         const slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
@@ -239,7 +239,7 @@ window.onload = async () => {
 
         const canvas = document.createElement("canvas");
         canvas.id = "image-showcase";
-        canvas.class = "image-showcase";
+        canvas.style.gridArea = "image-showcase";
         canvas.style.border = "1px solid var(--main-light-light-gray)";
         canvas.style.borderRadius = "25px";
         canvas.style.padding = "1rem";
