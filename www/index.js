@@ -122,15 +122,35 @@ window.onload = async () => {
         upload_picture.style.display = "none";
 
         const container = document.createElement("div");
-        container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
+        container.style.display = "grid";
+        container.style.gridTemplateAreas = `
+            "tool-bar tool-bar"
+            "edit-bar image-showcase"
+        `;
+        //container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
 
         const tool_bar  = document.createElement("div");
+        tool_bar.class = "tool-bar";
         tool_bar.style.gap = "20px";
         tool_bar.style.display = "flex";
         tool_bar.style.padding = "15px 50px 15px 50px";
         tool_bar.style.marginBottom = "20px";
         tool_bar.style.borderRadius = "25px";
         tool_bar.style.backgroundColor = "var(--main-light-gray)";
+
+        const edit_bar = document.createElement("div");
+        edit_bar.class = "edit-bar";
+        edit_bar.innerHTML = `
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+            hello world i want a lot more text
+        `;
 
         const slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
@@ -174,41 +194,56 @@ window.onload = async () => {
         num_inp.onmouseover = () => num_inp.style.background = "var(--main-gren)";
         num_inp.onmouseout = () => num_inp.style.background = "var(--main-light-light-gray)";
 
-
         const shuffle_btn = document.createElement("button");
         const edit_btn    = document.createElement("button");
+        const export_btn  = document.createElement("button");
 
         const dice_icon   = diceIcon.content.cloneNode(true).children[0];
         dice_icon.style   = "width: 40px; height: 40px";
         const pencil_icon = pencilIcon.content.cloneNode(true).children[0];
         pencil_icon.style = "width: 40px; height: 40px";
+        // TODO: tweak colors a bit better to not make it look so weird
+        const export_icon = exportIcon.content.cloneNode(true).children[0];
+        export_icon.style = "width: 40px; height: 40px";
 
         shuffle_btn.style.padding = "1rem";
         shuffle_btn.style.background = "var(--main-light-light-gray)";
         shuffle_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         shuffle_btn.appendChild(dice_icon);
 
-        // TODO: pick a better color
+        shuffle_btn.onclick = () => set_voronoied_image(canvas, slider.value);
         shuffle_btn.onmouseover = () => shuffle_btn.style.background = "var(--main-blue)";
         shuffle_btn.onmouseout = () => shuffle_btn.style.background = "var(--main-light-light-gray)";
-        shuffle_btn.onclick = () => set_voronoied_image(canvas, slider.value);
 
+        edit_btn.appendChild(pencil_icon);
         edit_btn.style.padding = "1rem";
         edit_btn.style.background = "var(--main-light-light-gray)";
         edit_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         edit_btn.onmouseover = () => edit_btn.style.background = "var(--main-gren)";
         edit_btn.onmouseout = () => edit_btn.style.background = "var(--main-light-light-gray)";
 
-        edit_btn.appendChild(pencil_icon);
+        export_btn.appendChild(export_icon);
+        export_btn.style.padding = "1rem";
+        export_btn.style.background = "var(--main-light-light-gray)";
+        export_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        export_btn.onmouseover = () => export_btn.style.background = "var(--main-blue)";
+        export_btn.onmouseout = () => export_btn.style.background = "var(--main-light-light-gray)";
 
         tool_bar.appendChild(slider);
         tool_bar.appendChild(num_inp);
         tool_bar.appendChild(shuffle_btn);
         tool_bar.appendChild(edit_btn);
+        tool_bar.appendChild(export_btn);
         container.appendChild(tool_bar);
+        container.appendChild(edit_bar);
 
         const canvas = document.createElement("canvas");
         canvas.id = "image-showcase";
+        canvas.class = "image-showcase";
+        canvas.style.border = "1px solid var(--main-light-light-gray)";
+        canvas.style.borderRadius = "25px";
+        canvas.style.padding = "1rem";
+        canvas.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         set_image_scaled(canvas, pixels);
 
         container.appendChild(canvas);
