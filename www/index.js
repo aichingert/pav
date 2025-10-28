@@ -40,6 +40,7 @@ window.onload = async () => {
     function set_image_scaled(canvas, pxls) {
         const w_width = window.innerWidth - 50;
         const w_height = 3 * window.innerHeight / 4;
+        console.log(w_width, w_height);
         const is_up = width < w_width && height < w_height;
 
         const scale = Math.ceil(is_up
@@ -117,6 +118,37 @@ window.onload = async () => {
         image_free(cpy);
     }
 
+    function process_file_in_wasm(f) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const tenc = new TextEncoder();
+            const tdec = new TextDecoder();
+
+            const image_path = tenc.encode(f.name);
+            const image_data = new Uint8Array(reader.result);
+
+            const path_ptr = alloc(image_path.byteLength);
+            const data_ptr = alloc(image_data.byteLength);
+
+            const path_dest = new Uint8Array(memory.buffer, path_ptr, image_path.byteLength);
+            tenc.encodeInto(f.name, path_dest);
+
+            const data_dest = new Uint8Array(memory.buffer, data_ptr, image_data.byteLength);
+            data_dest.set(image_data);
+
+            const file = wasm_array_init(path_ptr, image_path.byteLength);
+            const data = wasm_array_init(data_ptr, image_data.byteLength);
+
+            image = parse_image(file, data);
+            width = image_get_width(image);
+            height = image_get_height(image);
+            pixels = new Uint32Array(memory.buffer, image_get_pixels(image), width * height);
+            init_app();
+        };
+
+        reader.readAsArrayBuffer(f);
+    }
+
     function init_app() {
         drop_area.style.display = "none";
         upload_picture.style.display = "none";
@@ -139,18 +171,23 @@ window.onload = async () => {
 
         const edit_bar = document.createElement("div");
         edit_bar.style.gridArea = "edit-bar";
-        edit_bar.innerHTML = `
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-            hello world i want a lot more text
-        `;
-        edit_bar.style.display = "none";
+        edit_bar.style.display = "flex";
+        edit_bar.style.padding = "50px 15px 50px 15px";
+        edit_bar.style.borderRadius = "25px";
+        edit_bar.style.backgroundColor = "var(--main-light-gray)";
+
+        const eraser_btn = document.createElement("button");
+
+        const eraser_icon = eraserIcon.content.cloneNode(true).children[0];
+        eraser_icon.style   = "width: 40px; height: 40px";
+
+        eraser_btn.style.padding = "1rem";
+        eraser_btn.style.background = "var(--main-light-light-gray)";
+        eraser_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        eraser_btn.appendChild(eraser_icon);
+        edit_bar.appendChild(eraser_btn);
+        
+        //edit_bar.style.display = "none";
 
         const slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
@@ -255,33 +292,7 @@ window.onload = async () => {
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = () => {
-            const tenc = new TextEncoder();
-            const tdec = new TextDecoder();
-
-            const image_path = tenc.encode(event.target.files[0].name);
-            const image_data = new Uint8Array(reader.result);
-
-            const path_ptr = alloc(image_path.byteLength);
-            const data_ptr = alloc(image_data.byteLength);
-
-            const path_dest = new Uint8Array(memory.buffer, path_ptr, image_path.byteLength);
-            tenc.encodeInto(event.target.files[0].name, path_dest);
-
-            const data_dest = new Uint8Array(memory.buffer, data_ptr, image_data.byteLength);
-            data_dest.set(image_data);
-
-            const file = wasm_array_init(path_ptr, image_path.byteLength);
-            const data = wasm_array_init(data_ptr, image_data.byteLength);
-
-            image = parse_image(file, data);
-            width = image_get_width(image);
-            height = image_get_height(image);
-            pixels = new Uint32Array(memory.buffer, image_get_pixels(image), width * height);
-            init_app();
-        };
-        reader.readAsArrayBuffer(event.target.files[0]);
+        process_file_in_wasm(event.target.files[0]);
     });
 
     drop_area.addEventListener("dragover", (event) => {
@@ -293,7 +304,13 @@ window.onload = async () => {
     drop_area.addEventListener("drop", (event) => {
         event.stopPropagation();
         event.preventDefault();
-        const fileList = event.dataTransfer.files;
+        const file_list = event.dataTransfer.files;
+
+        if (file_list.length <= 0) {
+            return;
+        }
+
+        process_file_in_wasm(file_list[0]);
     });
 
     drop_area.addEventListener("click", (event) => {
