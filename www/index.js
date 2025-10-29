@@ -162,7 +162,7 @@ window.onload = async () => {
         //container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
 
         const tool_bar  = document.createElement("div");
-        //tool_bar.style.gap = "20px";
+        tool_bar.style.gap = "20px";
         tool_bar.style.display = "flex";
         tool_bar.style.padding = "15px 50px 15px 50px";
         tool_bar.style.borderRadius = "25px";
@@ -172,34 +172,63 @@ window.onload = async () => {
         const edit_bar = document.createElement("div");
         edit_bar.style.gridArea = "edit-bar";
         edit_bar.style.display = "flex";
+        edit_bar.style.gap = "20px";
+        edit_bar.style.flexDirection = "column";
         edit_bar.style.padding = "50px 15px 50px 15px";
         edit_bar.style.borderRadius = "25px";
         edit_bar.style.backgroundColor = "var(--main-light-gray)";
+        edit_bar.style.justifyContent = "center";
+        edit_bar.style.alignItems = "center";
 
+        const dd = document.createElement("div");
+        const ddd = document.createElement("div");
+        const dddd = document.createElement("div");
+
+        const line_t_btn = document.createElement("button");
         const eraser_btn = document.createElement("button");
 
+        const line_t_icon = lineThickness.content.cloneNode(true).children[0];
+        line_t_icon.style   = "width: 40px; height: 40px";
         const eraser_icon = eraserIcon.content.cloneNode(true).children[0];
         eraser_icon.style   = "width: 40px; height: 40px";
+ 
+        line_t_btn.style.padding = "1rem";
+        line_t_btn.style.background = "var(--main-light-light-gray)";
+        line_t_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
+        line_t_btn.appendChild(line_t_icon);
+        ddd.appendChild(line_t_btn);
+        edit_bar.appendChild(ddd);
+
+        const thickness_slider = document.createElement("input");
+        thickness_slider.type = "range";
+        thickness_slider.min = "1";
+        thickness_slider.max = "65";
+        thickness_slider.value = 8; 
+        thickness_slider.step = 8;
+        thickness_slider.style.orient = "vertical";
+        thickness_slider.style.writingMode = "vertical-lr";
+        thickness_slider.style.direction = "rtl";
+        dd.appendChild(thickness_slider);
+        edit_bar.appendChild(dd);
 
         eraser_btn.style.padding = "1rem";
         eraser_btn.style.background = "var(--main-light-light-gray)";
         eraser_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         eraser_btn.appendChild(eraser_icon);
-        edit_bar.appendChild(eraser_btn);
-        
-        //edit_bar.style.display = "none";
+        dddd.appendChild(eraser_btn);
+        edit_bar.appendChild(dddd);
 
-        const slider = document.createElement("input");
+        const pixel_slider = document.createElement("input");
         const size   = Math.min(100_000, Math.floor((width * height) / 8));
         const init   = Math.floor(size / 2);
-        slider.type = "range";
-        slider.min = "1";
-        slider.max = size.toString();
-        slider.value = init;
-        slider.step = (size / 10_000).toString();
-        slider.oninput = (event) => {
+        pixel_slider.type = "range";
+        pixel_slider.min = "1";
+        pixel_slider.max = size.toString();
+        pixel_slider.value = init;
+        pixel_slider.step = (size / 10_000).toString();
+        pixel_slider.oninput = (event) => {
             num_inp.value = Math.floor(event.target.valueAsNumber);
-            set_voronoied_image(canvas, slider.value);
+            set_voronoied_image(canvas, pixel_slider.value);
         }
 
         const num_inp = document.createElement("input");
@@ -225,7 +254,7 @@ window.onload = async () => {
         };
         num_inp.oninput = (event) => {
             const value = event.target.valueAsNumber;
-            slider.value = value;
+            pixel_slider.value = value;
             set_voronoied_image(canvas, value);
         };
         num_inp.onmouseover = () => num_inp.style.background = "var(--main-gren)";
@@ -248,7 +277,7 @@ window.onload = async () => {
         shuffle_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
         shuffle_btn.appendChild(dice_icon);
 
-        shuffle_btn.onclick = () => set_voronoied_image(canvas, slider.value);
+        shuffle_btn.onclick = () => set_voronoied_image(canvas, pixel_slider.value);
         shuffle_btn.onmouseover = () => shuffle_btn.style.background = "var(--main-blue)";
         shuffle_btn.onmouseout = () => shuffle_btn.style.background = "var(--main-light-light-gray)";
 
@@ -266,7 +295,7 @@ window.onload = async () => {
         export_btn.onmouseover = () => export_btn.style.background = "var(--main-blue)";
         export_btn.onmouseout = () => export_btn.style.background = "var(--main-light-light-gray)";
 
-        tool_bar.appendChild(slider);
+        tool_bar.appendChild(pixel_slider);
         tool_bar.appendChild(num_inp);
         tool_bar.appendChild(shuffle_btn);
         tool_bar.appendChild(edit_btn);
