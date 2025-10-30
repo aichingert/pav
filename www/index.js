@@ -3,9 +3,7 @@ window.onload = async () => {
     let width;
     let height;
     let pixels;
-
-    const drop_area = document.getElementById("drop-area");
-    const upload_picture = document.getElementById("picture");
+    app.style.display = "none";
 
     const wasm = await WebAssembly.instantiateStreaming(
         fetch("pav.wasm"), 
@@ -39,7 +37,7 @@ window.onload = async () => {
 
     function set_image_scaled(canvas, pxls) {
         const w_width = window.innerWidth - 50;
-        const w_height = 3 * window.innerHeight / 4;
+        const w_height = window.innerHeight - (window.innerHeight / 3);
         console.log(w_width, w_height);
         const is_up = width < w_width && height < w_height;
 
@@ -150,173 +148,40 @@ window.onload = async () => {
     }
 
     function init_app() {
-        drop_area.style.display = "none";
-        upload_picture.style.display = "none";
-
-        const container = document.createElement("div");
-        container.style.display = "grid";
-        container.style.gap = "15px";
-        container.style.justifyContent = "center";
-        container.style.alignItems = "center";
-        container.style.gridTemplateAreas = `"tool-bar tool-bar" "edit-bar image-showcase"`;
-        //container.style = "display: flex; flex-direction: column; justify-content: center; align-items: center";
-
-        const tool_bar  = document.createElement("div");
-        tool_bar.style.gap = "20px";
-        tool_bar.style.display = "flex";
-        tool_bar.style.padding = "15px 50px 15px 50px";
-        tool_bar.style.borderRadius = "25px";
-        tool_bar.style.backgroundColor = "var(--main-light-gray)";
-        tool_bar.style.gridArea = "tool-bar";
-
-        const edit_bar = document.createElement("div");
-        edit_bar.style.gridArea = "edit-bar";
-        edit_bar.style.display = "flex";
-        edit_bar.style.gap = "20px";
-        edit_bar.style.flexDirection = "column";
-        edit_bar.style.padding = "50px 15px 50px 15px";
-        edit_bar.style.borderRadius = "25px";
-        edit_bar.style.backgroundColor = "var(--main-light-gray)";
-        edit_bar.style.justifyContent = "center";
-        edit_bar.style.alignItems = "center";
-
-        const dd = document.createElement("div");
-        const ddd = document.createElement("div");
-        const dddd = document.createElement("div");
-
-        const line_t_btn = document.createElement("button");
-        const eraser_btn = document.createElement("button");
-
-        const line_t_icon = lineThickness.content.cloneNode(true).children[0];
-        line_t_icon.style   = "width: 40px; height: 40px";
-        const eraser_icon = eraserIcon.content.cloneNode(true).children[0];
-        eraser_icon.style   = "width: 40px; height: 40px";
- 
-        line_t_btn.style.padding = "1rem";
-        line_t_btn.style.background = "var(--main-light-light-gray)";
-        line_t_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        line_t_btn.appendChild(line_t_icon);
-        ddd.appendChild(line_t_btn);
-        edit_bar.appendChild(ddd);
-
-        const thickness_slider = document.createElement("input");
-        thickness_slider.type = "range";
-        thickness_slider.min = "1";
-        thickness_slider.max = "65";
-        thickness_slider.value = 8; 
-        thickness_slider.step = 8;
-        thickness_slider.style.orient = "vertical";
-        thickness_slider.style.writingMode = "vertical-lr";
-        thickness_slider.style.direction = "rtl";
-        dd.appendChild(thickness_slider);
-        edit_bar.appendChild(dd);
-
-        eraser_btn.style.padding = "1rem";
-        eraser_btn.style.background = "var(--main-light-light-gray)";
-        eraser_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        eraser_btn.appendChild(eraser_icon);
-        dddd.appendChild(eraser_btn);
-        edit_bar.appendChild(dddd);
+        home.style.display = "none";
+        app.style.display = "grid";
 
         const pixel_slider = document.createElement("input");
-        const size   = Math.min(100_000, Math.floor((width * height) / 8));
+
+        const size   = Math.min(50_000, Math.floor((width * height) / 8));
         const init   = Math.floor(size / 2);
-        pixel_slider.type = "range";
-        pixel_slider.min = "1";
         pixel_slider.max = size.toString();
         pixel_slider.value = init;
-        pixel_slider.step = (size / 10_000).toString();
+        pixel_slider.step = (size / 5_000).toString();
         pixel_slider.oninput = (event) => {
-            num_inp.value = Math.floor(event.target.valueAsNumber);
+            number_input.value = Math.floor(event.target.valueAsNumber);
             set_voronoied_image(canvas, pixel_slider.value);
         }
 
-        const num_inp = document.createElement("input");
-        num_inp.type = "number";
-        num_inp.style = `
-            padding: 1rem;
-            color: var(--main-blue); 
-            background: var(--main-light-light-gray); 
-            border-style: none; 
-            align-items: center;
-            font-size: 15px;
-            font-weight: bolder;
-        `;
-        num_inp.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        num_inp.min = "1";
-        num_inp.max = size.toString();
-        num_inp.value = init;
-        num_inp.onbeforeinput = (event) => {
-            if(!/^([0-9]*)$/.test(event.data ?? "")) {
+        number_input.max = size.toString();
+        number_input.value = init;
+        number_input.onbeforeinput = (event) => {
+            if(!/^([0-9]*)$/.test(event.data ?? "") || (event.data ?? 0) > size) {
                 event.preventDefault();
             }
             return;
         };
-        num_inp.oninput = (event) => {
+        number_input.oninput = (event) => {
             const value = event.target.valueAsNumber;
             pixel_slider.value = value;
             set_voronoied_image(canvas, value);
         };
-        num_inp.onmouseover = () => num_inp.style.background = "var(--main-gren)";
-        num_inp.onmouseout = () => num_inp.style.background = "var(--main-light-light-gray)";
-
-        const shuffle_btn = document.createElement("button");
-        const edit_btn    = document.createElement("button");
-        const export_btn  = document.createElement("button");
-
-        const dice_icon   = diceIcon.content.cloneNode(true).children[0];
-        dice_icon.style   = "width: 40px; height: 40px";
-        const pencil_icon = pencilIcon.content.cloneNode(true).children[0];
-        pencil_icon.style = "width: 40px; height: 40px";
-        // TODO: tweak colors a bit better to not make it look so weird
-        const export_icon = exportIcon.content.cloneNode(true).children[0];
-        export_icon.style = "width: 40px; height: 40px";
-
-        shuffle_btn.style.padding = "1rem";
-        shuffle_btn.style.background = "var(--main-light-light-gray)";
-        shuffle_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        shuffle_btn.appendChild(dice_icon);
-
         shuffle_btn.onclick = () => set_voronoied_image(canvas, pixel_slider.value);
-        shuffle_btn.onmouseover = () => shuffle_btn.style.background = "var(--main-blue)";
-        shuffle_btn.onmouseout = () => shuffle_btn.style.background = "var(--main-light-light-gray)";
 
-        edit_btn.appendChild(pencil_icon);
-        edit_btn.style.padding = "1rem";
-        edit_btn.style.background = "var(--main-light-light-gray)";
-        edit_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        edit_btn.onmouseover = () => edit_btn.style.background = "var(--main-gren)";
-        edit_btn.onmouseout = () => edit_btn.style.background = "var(--main-light-light-gray)";
-
-        export_btn.appendChild(export_icon);
-        export_btn.style.padding = "1rem";
-        export_btn.style.background = "var(--main-light-light-gray)";
-        export_btn.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        export_btn.onmouseover = () => export_btn.style.background = "var(--main-blue)";
-        export_btn.onmouseout = () => export_btn.style.background = "var(--main-light-light-gray)";
-
-        tool_bar.appendChild(pixel_slider);
-        tool_bar.appendChild(num_inp);
-        tool_bar.appendChild(shuffle_btn);
-        tool_bar.appendChild(edit_btn);
-        tool_bar.appendChild(export_btn);
-        container.appendChild(tool_bar);
-        container.appendChild(edit_bar);
-
-        const canvas = document.createElement("canvas");
-        canvas.id = "image-showcase";
-        canvas.style.gridArea = "image-showcase";
-        canvas.style.border = "1px solid var(--main-light-light-gray)";
-        canvas.style.borderRadius = "25px";
-        canvas.style.padding = "1rem";
-        canvas.style.boxShadow = "inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"
-        set_image_scaled(canvas, pixels);
-
-        container.appendChild(canvas);
-        document.body.appendChild(container);
+        set_image_scaled(raw_pixels, pixels);
     }
 
-    upload_picture.addEventListener("change", (event) => {
+    picture_upload.addEventListener("change", (event) => {
         if (event.target.files.length <= 0) {
             return;
         }
@@ -343,7 +208,7 @@ window.onload = async () => {
     });
 
     drop_area.addEventListener("click", (event) => {
-        upload_picture.click();
+        picture_upload.click();
     });
 }
 
