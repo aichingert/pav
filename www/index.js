@@ -151,8 +151,6 @@ window.onload = async () => {
         home.style.display = "none";
         app.style.display = "grid";
 
-        const pixel_slider = document.createElement("input");
-
         const size   = Math.min(50_000, Math.floor((width * height) / 8));
         const init   = Math.floor(size / 2);
         pixel_slider.max = size.toString();
@@ -160,7 +158,7 @@ window.onload = async () => {
         pixel_slider.step = (size / 5_000).toString();
         pixel_slider.oninput = (event) => {
             number_input.value = Math.floor(event.target.valueAsNumber);
-            set_voronoied_image(canvas, pixel_slider.value);
+            set_voronoied_image(raw_pixels, pixel_slider.value);
         }
 
         number_input.max = size.toString();
@@ -174,9 +172,9 @@ window.onload = async () => {
         number_input.oninput = (event) => {
             const value = event.target.valueAsNumber;
             pixel_slider.value = value;
-            set_voronoied_image(canvas, value);
+            set_voronoied_image(raw_pixels, value);
         };
-        shuffle_btn.onclick = () => set_voronoied_image(canvas, pixel_slider.value);
+        shuffle_btn.onclick = () => set_voronoied_image(raw_pixels, pixel_slider.value);
 
         set_image_scaled(raw_pixels, pixels);
     }
