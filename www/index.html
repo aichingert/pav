@@ -88,6 +88,10 @@
                 border: none;
             }
 
+            .circle-cursor {
+                cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 30 30"><circle cx="8" cy="8" r="4" stroke="white" fill="none" /></svg>'), auto;
+            }
+
             .upload-area {
                 display: flex; 
                 align-items: center;
@@ -104,11 +108,10 @@
             }
 
             .hover-green:hover {
-                background-color: var(--main-gren);
+                background-color: var(--main-gren) !important;
             }
-
             .hover-blue:hover {
-                background-color: var(--main-blue);
+                background-color: var(--main-blue) !important;
             }
 
             .options-area {
@@ -138,8 +141,8 @@
             </div>
         </div>
 
-        <div id="app" style="display: grid; min-height: 0; min-width: 0; gap: 15px; justify-content: center; align-items: center; grid-template-areas: 'tool-bar tool-bar tool-bar' 'edit-bar image-showcase image-showcase'">
-            <div class="options-area" style="grid-area: tool-bar; padding: 15px">
+        <div id="app" style="display: inline-grid; min-height: 0; min-width: 0; gap: 15px; justify-content: center; align-items: center; grid-template-rows: 1fr auto">
+            <div class="options-area" style="padding: 15px">
                 <div>
                     <select name="Method" id="method_slct">
                         <option selected="selected">Random</option>
@@ -162,22 +165,24 @@
                 </button>
             </div>
 
-            <div class="options-area" style="display: none; grid-area: edit-bar; overflow: hidden; min-width: 0; flex-direction: column; padding: 15px; justify-content: center; align-items: center">
-                <div><button title="Thickness" id="thickness_btn" class="custom-button hover-blue">
-                    <svg viewBox="0 0 430.51 430.51"><path stroke-width="1.425" d="M330.467 281.402c-6.48-2.12-12.793-3.363-19.197-3.748a57.416 57.416 0 00-3.433-.098c-9.636 0-21.746 2.068-33.457 4.068-10.436 1.785-20.294 3.466-27.172 3.466-4.839 0-6.511-.869-7.051-1.32-5.847-7.187 2.603-26.692 6.22-35.05.924-2.133 1.653-3.818 2.074-5.02 5.865-16.9 10.174-34.893 2.052-51.97-6.751-14.196-22.533-25.496-40.079-28.762-5.11-1.182-10.976-1.732-18.46-1.732-6.161 0-12.754.382-19.13.753-6.54.381-13.303.773-19.78.773-22.275 0-35.097-4.976-42.851-16.6-14.393-22.378 2.894-62.463 20.644-79.156a2.779 2.779 0 00.215-3.843 2.92 2.92 0 00-3.901-.476c-22.732 16.127-37.781 45.427-36.596 71.252.632 13.773 6.046 32.904 28.25 45.851 11.953 6.969 31.284 8.435 49.978 9.854 18.391 1.396 37.41 2.84 43.27 9.842 1.536 1.835 2.121 4.057 1.777 6.854-1.28 12.805-7.625 25.415-13.762 37.606-11.592 23.03-23.577 46.843-2.861 73.27 18.194 23.204 42.348 23.204 67.16 23.035 2.032-.014 4.067-.028 6.101-.028 10.825 0 23.33.324 34.669 4.192 8.069 3.062 12.127 9.397 14.025 21.963 1.454 7.705 4.95 13.77 9.59 18.337a20.936 20.936 0 014.738-9.77c12.184-14.086 9.8-27.25 3.712-53.336-2.826-12.124-5.959-25.562-6.745-40.207z"/></svg>
-                </button></div>
-                <div><input
-                    style="writing-mode: vertical-lr; direciton: rtl; appearence: slider-vertical" 
-                    type="range" min="1" max="8" value="1" step="1"
-                /></div>
-                <div><button title="Eraser" id="erase_btn" class="custom-button hover-green">
-                    <svg viewBox="-2.02 -2.02 24.28 24.28"><path fill="#8ba4b0" d="M15.244 8.219l-6.81-6.81a1 1 0 00-1.36 0l-5.71 5.71a1 1 0 000 1.41l6.82 6.81z"/><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1.364 8.479a1 1 0 010-1.36l5.71-5.71a1 1 0 011.41 0l10.3 10.35a1 1 0 010 1.41l-5.66 5.66a1 1 0 01-1.41 0zm17.42 4.69l-5.66 5.66a1 1 0 01-1.41 0l-3.53-3.54 7.06-7.07 3.54 3.54a1 1 0 010 1.41zm-14.71 5.95h8"/><path fill="#8a9a7b" stroke-width=".049" d="M11.03 16.68l-1.37-1.406 2.798-2.798 2.799-2.799 1.388 1.39 1.388 1.388-2.817 2.816-2.816 2.817z"/><path fill="#8a9a7b" stroke-width=".049" d="M11.074 16.682A65.914 65.914 0 019.74 15.29c-.007-.019 1.232-1.278 2.753-2.799l2.765-2.764 1.363 1.364 1.364 1.364-2.793 2.793-2.794 2.793z"/></svg>
-                </button></div>
-            </div>
+            <div id="bottom_row" style="display: inline-grid; grid-template-columns: 100%; gap: 15px"> 
+                <div id="edit_bar" class="options-area" style="display: none; overflow: hidden; min-width: 0; flex-direction: column; padding: 15px">
+                    <div><button title="Thickness" id="thickness_btn" class="custom-button hover-blue">
+                        <svg viewBox="0 0 430.51 430.51"><path stroke-width="1.425" d="M330.467 281.402c-6.48-2.12-12.793-3.363-19.197-3.748a57.416 57.416 0 00-3.433-.098c-9.636 0-21.746 2.068-33.457 4.068-10.436 1.785-20.294 3.466-27.172 3.466-4.839 0-6.511-.869-7.051-1.32-5.847-7.187 2.603-26.692 6.22-35.05.924-2.133 1.653-3.818 2.074-5.02 5.865-16.9 10.174-34.893 2.052-51.97-6.751-14.196-22.533-25.496-40.079-28.762-5.11-1.182-10.976-1.732-18.46-1.732-6.161 0-12.754.382-19.13.753-6.54.381-13.303.773-19.78.773-22.275 0-35.097-4.976-42.851-16.6-14.393-22.378 2.894-62.463 20.644-79.156a2.779 2.779 0 00.215-3.843 2.92 2.92 0 00-3.901-.476c-22.732 16.127-37.781 45.427-36.596 71.252.632 13.773 6.046 32.904 28.25 45.851 11.953 6.969 31.284 8.435 49.978 9.854 18.391 1.396 37.41 2.84 43.27 9.842 1.536 1.835 2.121 4.057 1.777 6.854-1.28 12.805-7.625 25.415-13.762 37.606-11.592 23.03-23.577 46.843-2.861 73.27 18.194 23.204 42.348 23.204 67.16 23.035 2.032-.014 4.067-.028 6.101-.028 10.825 0 23.33.324 34.669 4.192 8.069 3.062 12.127 9.397 14.025 21.963 1.454 7.705 4.95 13.77 9.59 18.337a20.936 20.936 0 014.738-9.77c12.184-14.086 9.8-27.25 3.712-53.336-2.826-12.124-5.959-25.562-6.745-40.207z"/></svg>
+                    </button></div>
+                    <div><input id="thickness_sld"
+                        style="display: none; writing-mode: vertical-lr; direciton: rtl; appearence: slider-vertical" 
+                        type="range" min="1" max="8" value="1" step="1"
+                    /></div>
+                    <div><button title="Eraser" id="erase_btn" class="custom-button hover-green">
+                        <svg viewBox="-2.02 -2.02 24.28 24.28"><path fill="#8ba4b0" d="M15.244 8.219l-6.81-6.81a1 1 0 00-1.36 0l-5.71 5.71a1 1 0 000 1.41l6.82 6.81z"/><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1.364 8.479a1 1 0 010-1.36l5.71-5.71a1 1 0 011.41 0l10.3 10.35a1 1 0 010 1.41l-5.66 5.66a1 1 0 01-1.41 0zm17.42 4.69l-5.66 5.66a1 1 0 01-1.41 0l-3.53-3.54 7.06-7.07 3.54 3.54a1 1 0 010 1.41zm-14.71 5.95h8"/><path fill="#8a9a7b" stroke-width=".049" d="M11.03 16.68l-1.37-1.406 2.798-2.798 2.799-2.799 1.388 1.39 1.388 1.388-2.817 2.816-2.816 2.817z"/><path fill="#8a9a7b" stroke-width=".049" d="M11.074 16.682A65.914 65.914 0 019.74 15.29c-.007-.019 1.232-1.278 2.753-2.799l2.765-2.764 1.363 1.364 1.364 1.364-2.793 2.793-2.794 2.793z"/></svg>
+                    </button></div>
+                </div>
 
-            <div style="display: flex; justify-content: center; align-items: center; grid-area: image-showcase; padding: 1rem; border: 1px solid var(--main-light-light-gray); border-radius: 25px; box-shadow: inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015">
-            <canvas id="raw_pixels" />
-            </div>
+                <div style="display: flex; justify-content: center; align-items: center" >
+                    <canvas id="raw_pixels" style="padding: 1rem; border: 1px solid var(--main-light-light-gray); border-radius: 25px; box-shadow: inset 0 1px 2px #ffffff30, 0 1px 2px #00000030, 0 2px 4px #00000015"/>
+                </div>
+            </div> 
         </div>
     </body>
 </html>

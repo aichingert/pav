@@ -3,7 +3,55 @@ window.onload = async () => {
     let width;
     let height;
     let pixels;
+
+    let edit_selected = false;
+    let thickness_selected = false;
+
+    home.style.display = "";
     app.style.display = "none";
+
+    // setup events
+    shuffle_btn.onclick = () => set_voronoied_image(raw_pixels, pixel_slider.value);
+    edit_btn.onclick = () => {
+        edit_selected = !edit_selected;
+        if (edit_selected) {
+            raw_pixels.classList.add("circle-cursor");
+            set_image(raw_pixels, pixels, false);
+
+            edit_btn.style.background = "var(--main-gren)";
+            edit_bar.style.display = ""; 
+            bottom_row.style.gridTemplateColumns = "15% auto";
+        } else {
+            // TODO: add multiple sizes and change depending on thickness
+            raw_pixels.classList.remove("circle-cursor");
+            let pxls = new Uint32Array(memory.buffer, pixels, width * height);
+            set_image(raw_pixels, pixels, true);
+
+            edit_btn.style.background = "var(--main-light-light-gray)";
+            edit_bar.style.display = "none"; 
+            bottom_row.style.gridTemplateColumns = "100%";
+        }
+    }
+    thickness_btn.onclick = () => {
+        thickness_selected = !thickness_selected;
+        if (thickness_selected) {
+            thickness_btn.style.background = "var(--main-blue)";
+            thickness_sld.style.display = "";
+        } else {
+            thickness_btn.style.background = "var(--main-lightl-light-gray)";
+            thickness_sld.style.display = "none";
+        }
+    };
+
+    raw_pixels.onmousedown = (event) => {
+        if (!edit_selected) return;
+
+        const rect = raw_pixels.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        console.log(x);
+        console.log(y);
+    }
 
     const wasm = await WebAssembly.instantiateStreaming(
         fetch("pav.wasm"), 
@@ -35,10 +83,33 @@ window.onload = async () => {
         memory,
     } = wasm.instance.exports;
 
-    function set_image_scaled(canvas, pxls) {
+    function set_image(canvas, pxls, should_scale) {
+        if (!should_scale) {
+            console.log(width, height);
+            canvas.width = width;
+            canvas.height = height;
+
+            let ctx = canvas.getContext("2d");
+            let img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < height; i++) {
+                for (let j = 0; j < width; j++) {
+                    let pos = i * width + j;
+                    let off = pos * 4;
+
+                    img.data[off + 2] = (pixels[pos] >> 0)  & 0xFF;
+                    img.data[off + 1] = (pixels[pos] >> 8)  & 0xFF;
+                    img.data[off + 0] = (pixels[pos] >> 16) & 0xFF;
+                    img.data[off + 3] = 0xFF;
+                }
+            }
+
+            ctx.putImageData(img, 0, 0);
+            return;
+        }
+
         const w_width = window.innerWidth - 50;
         const w_height = window.innerHeight - (window.innerHeight / 3);
-        console.log(w_width, w_height);
         const is_up = width < w_width && height < w_height;
 
         const scale = Math.ceil(is_up
@@ -111,7 +182,7 @@ window.onload = async () => {
 
         apply_voronoi(cpy, 0, val);
         let cpx = new Uint32Array(memory.buffer, image_get_pixels(cpy), width * height);
-        set_image_scaled(canvas, cpx);
+        set_image(canvas, cpx, true);
 
         image_free(cpy);
     }
@@ -151,32 +222,41 @@ window.onload = async () => {
         home.style.display = "none";
         app.style.display = "grid";
 
-        const size   = Math.min(50_000, Math.floor((width * height) / 8));
+        const size   = Math.min(50_000, width * height) + 1;
         const init   = Math.floor(size / 2);
+        let value = init;
         pixel_slider.max = size.toString();
-        pixel_slider.value = init;
-        pixel_slider.step = (size / 5_000).toString();
+        pixel_slider.value = value;
+        pixel_slider.step = Math.floor((size / 5_000)).toString();
         pixel_slider.oninput = (event) => {
-            number_input.value = Math.floor(event.target.valueAsNumber);
+            let current = Math.max(1, event.target.valueAsNumber - 1);
+            if (value == current) {
+                return;
+            }
+            if (value == 1) {
+                current -= 1;
+            }
+
+            value = current;
+            pixel_slider.value = value;
+            number_input.value = value;
             set_voronoied_image(raw_pixels, pixel_slider.value);
         }
 
         number_input.max = size.toString();
         number_input.value = init;
-        number_input.onbeforeinput = (event) => {
-            if(!/^([0-9]*)$/.test(event.data ?? "") || (event.data ?? 0) > size) {
-                event.preventDefault();
-            }
-            return;
-        };
         number_input.oninput = (event) => {
-            const value = event.target.valueAsNumber;
+            if(isNaN(event.target.valueAsNumber) || !/^([0-9]*)$/.test(event.target.value) || event.target.valueAsNumber > size * 10) {
+                number_input.value = value;
+                return;
+            }
+
+            value = event.target.valueAsNumber;
             pixel_slider.value = value;
             set_voronoied_image(raw_pixels, value);
         };
-        shuffle_btn.onclick = () => set_voronoied_image(raw_pixels, pixel_slider.value);
 
-        set_image_scaled(raw_pixels, pixels);
+        set_image(raw_pixels, pixels, true);
     }
 
     picture_upload.addEventListener("change", (event) => {
