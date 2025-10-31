@@ -1,5 +1,5 @@
 <p align="center">
-  <img style="border-radius: 50%; object-fit: cover" src="https://github.com/aichingert/pav/blob/main/www/android-chrome-192x192.png" alt="simple logo"/>
+  <img style="border-radius: 50%; object-fit: cover" src="https://github.com/aichingert/pav/blob/main/docs/logo.png" alt="simple logo"/>
 </p>
 
 # pav
