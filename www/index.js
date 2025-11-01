@@ -46,7 +46,7 @@ window.onload = async () => {
         edit_selected = !edit_selected;
         if (edit_selected) {
             raw_pixels.classList.add("circle-cursor");
-            set_image(raw_pixels, pixels, false);
+            //set_image(raw_pixels, pixels, false);
 
             edit_btn.style.background = "var(--main-gren)";
             edit_bar.style.display = ""; 
@@ -54,7 +54,7 @@ window.onload = async () => {
         } else {
             // TODO: add multiple sizes and change depending on thickness
             raw_pixels.classList.remove("circle-cursor");
-            set_image(raw_pixels, pixels, true);
+            //set_image(raw_pixels, pixels, true);
 
             edit_btn.style.background = "var(--main-light-light-gray)";
             edit_bar.style.display = "none"; 
@@ -83,6 +83,8 @@ window.onload = async () => {
     }
 
     function set_image(canvas, pxls, should_scale) {
+        // TODO: remove this
+        should_scale = true;
         if (!should_scale) {
             console.log(width, height);
             canvas.width = width;

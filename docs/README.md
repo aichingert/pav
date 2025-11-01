@@ -2,7 +2,7 @@
   <img style="border-radius: 25px" width="573" height="100" alt="logo" src="https://github.com/user-attachments/assets/8aa5e6d8-7241-4e42-a9fd-77afdac523f0" />
 </p>
 
-# pav
+# 
 
 pixelate art with voronai
 
