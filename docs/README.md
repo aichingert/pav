@@ -1,10 +1,8 @@
 <p align="center">
-  <img style="border-radius: 25px" width="573" height="100" alt="logo" src="https://github.com/user-attachments/assets/8aa5e6d8-7241-4e42-a9fd-77afdac523f0" />
+  <img width="573" height="100" alt="logo-removebg-preview" src="https://github.com/user-attachments/assets/2ab3ff8f-9883-4544-b7ac-e4a635dbca64" />
 </p>
 
 # 
-
-pixelate art with voronai
 
 ## usage
 
