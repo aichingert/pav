@@ -127,11 +127,6 @@ pub const IDAT = struct {
     data: []u8,
     size: usize,
 
-    const Huffman = struct {
-        count: []u16,
-        symbl: []u16,
-    };
-
     fn get_color_value(self: *IDAT, ihdr: *IHDR, plte: *PLTE, pos: *usize) !u32 {
         switch (ihdr.*.color_type) {
             0, 4 => return ParseImageError.InvalidImage,
@@ -171,7 +166,7 @@ pub const IDAT = struct {
         return 0;
     }
 
-    fn read_chunk(allocator: Allocator, raw_png: []const u8, pos: *u32, length: u32) !IDAT {
+    fn read_chunk(allocator: Allocator, ihdr: *IHDR, raw_png: []const u8, pos: *u32, length: u32) !IDAT {
         const cmf = read(u8, raw_png, pos);
         const flg = read(u8, raw_png, pos);
 
@@ -220,8 +215,7 @@ pub const IDAT = struct {
 
         const in = try allocator.alloc(u8, in_size);
         defer allocator.free(in);
-
-        const out = try allocator.alloc(u8, 4096 * 2160 * 10);
+        const out = try allocator.alloc(u8, 4 * ihdr.width * ihdr.height);
 
         pos.* = src;
         ilen = length - 2;
@@ -420,7 +414,7 @@ fn paeth_filter(ihdr: *IHDR, plte: *PLTE, idat: *IDAT, line: u32, pixel_buffer: 
     }
 }
 
-pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
+pub fn read_image(allocator: Allocator, raw_png: []const u8) !Image {
     // NOTE: png has to have a png signature
     if (raw_png.len < 8 or !mem.eql(u8, &png_sig, raw_png[0..8])) {
         return ParseImageError.InvalidImage;
@@ -429,8 +423,8 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
     var pos: u32 = 8;
     var ihdr     = try IHDR.read_chunk(raw_png, &pos);
     var idat     = IDAT{ .data = undefined, .size = undefined };
-    defer allocator.free(idat.data);
     var plte     = PLTE{ .palette = undefined, .palette_size = undefined, };
+    defer allocator.free(idat.data);
 
     while (true) {
         const length = read(u32, raw_png, &pos);
@@ -441,7 +435,7 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
         }
 
         if          (mem.eql(u8, &png_idat, chunk_type)) {
-            idat = try IDAT.read_chunk(allocator, raw_png, &pos, length);
+            idat = try IDAT.read_chunk(allocator, &ihdr, raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_plte, chunk_type)) {
             plte = try PLTE.read_chunk(raw_png, &pos, length);
         } else if   (mem.eql(u8, &png_iend, chunk_type)) {
@@ -471,4 +465,11 @@ pub fn extract_pixels(allocator: Allocator, raw_png: []const u8) !Image {
     }; 
 }
 
+pub fn write_image(allocator: Allocator, path: []const u8, image: *Image) !void {
+    _ = image;
+    _ = allocator;
+
+    const file = try std.fs.cwd().createFile(path, .{ .read = true });
+    defer file.close();
+}
 

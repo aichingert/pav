@@ -9,7 +9,8 @@
 there is a cli when building it normaly using
 
 ```sh
-zig build run -- --method=random 8_bit.png 8_bit.png
+# NOTE: if out is not provided it should generate an image of the same type
+zig build run -- --method=random ~/Pictures/image.png --out=image.ppm
 ```
 
 another way is using the [web interface](https://aichingert.github.io/pav) which should be fairly intuitive (when completed)

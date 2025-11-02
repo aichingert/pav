@@ -61,7 +61,7 @@ fn process(
     std.debug.print("[INFO] processing=`{s}` size=`{d}kb`\n", .{in_path, read_len / 1000}); 
 
     switch (ext) {
-        .png => image = try Png.extract_pixels(allocator, raw_data),
+        .png => image = try Png.read_image(allocator, raw_data),
         .jpg => {
             std.debug.print("[INFO]: not yet supported jpg: skipping\n", .{});
             return;

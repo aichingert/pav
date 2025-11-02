@@ -94,7 +94,7 @@ export fn parse_image(
 
     switch (ext) {
         .png => {
-            const png_img = Png.extract_pixels(wasm_allocator, raw_data) catch unreachable;
+            const png_img = Png.read_image(wasm_allocator, raw_data) catch unreachable;
             img.width = png_img.width;
             img.height = png_img.height;
             img.pixels = png_img.pixels;

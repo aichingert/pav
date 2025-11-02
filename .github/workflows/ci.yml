@@ -24,7 +24,7 @@ jobs:
 
       - name: building zig
         run: |
-          zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-freestanding
+          zig build -Doptimize=ReleaseFast -Dtarget=wasm32-freestanding
           mv zig-out/bin/* www/
 
       - name: upload files
